@@ -2,7 +2,7 @@ from core.logger import log
 from core.screen import get_screen
 from core.vision import find_template
 from core.profile import load_profile
-from coordinates.spots import MAPS
+from core.navigation_config import load_all_map_definitions
 
 
 def get_current_map():
@@ -12,7 +12,9 @@ def get_current_map():
     """
     screen = get_screen()
 
-    for map_id, map_data in MAPS.items():
+    map_definitions = load_all_map_definitions()
+
+    for map_id, map_data in map_definitions.items():
         navigation = map_data.get("navigation", {})
         current_template = navigation.get("current_map_template")
 

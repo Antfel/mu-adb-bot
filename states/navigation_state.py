@@ -5,25 +5,30 @@ from core.screen import get_screen
 from core.vision import find_template
 from core.ui import find_template_with_scroll
 from core.profile import load_profile
-from coordinates.spots import resolve_farm_target
+from core.navigation_config import load_map_definition
 
 
 MAP_BUTTON = {"x": 2440, "y": 120}
 
 
-def switch_to_wire(map_data, wire_id):
+def switch_to_wire(map_def, wire_id):
     log(f"[NAVIGATION] Wire switch placeholder - requested wire: {wire_id}")
     return True
 
 
 def go_to_active_farm_spot():
     profile = load_profile()
-    map_data, wire_data, spot = resolve_farm_target(profile)
-    navigation = map_data["navigation"]
+    map_id = profile["map"]
+    wire_id = profile["wire"]
+    spot_id = profile["spot"]
+
+    map_def = load_map_definition(map_id)
+    navigation = map_def["navigation"]
+    spot = map_def["spots"][spot_id]
 
     log(
-        f"[NAVIGATION] Going to: {map_data['name']} | "
-        f"{wire_data.get('name', profile['wire'])} | {spot['name']}"
+        f"[NAVIGATION] Going to: {map_def['name']} | "
+        f"{wire_id} | {spot['name']}"
     )
 
     tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
@@ -87,7 +92,7 @@ def go_to_active_farm_spot():
 
     wait(navigation.get("enter_wait", 8))
 
-    if not switch_to_wire(map_data, profile["wire"]):
+    if not switch_to_wire(map_def, wire_id):
         return False
 
     log("[NAVIGATION] Opening map inside target map")
