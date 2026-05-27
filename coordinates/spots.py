@@ -2,6 +2,7 @@ MAPS = {
     "kalima_1": {
         "name": "Kalima Temple 1",
         "navigation": {
+            "current_map_template": "templates/maps/Kalima_temple/current/kalima_1_current.png",
             "map_head_template": "templates/maps/Kalima_temple/mapsui/kalima_temple_head.png",
             "map_option_template": "templates/maps/Kalima_temple/mapsui/kalima_temple_1.png",
             "checked_template": "templates/maps/Kalima_temple/modalui/kalima_1_checked.png",

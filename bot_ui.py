@@ -11,6 +11,8 @@ from states.potion_state import is_any_potion_empty
 from states.recovery_state import recover_if_dead
 from states.purchase_potions_state import handle_empty_potions
 from states.farming import run_farming_state
+from states.map_state import is_in_configured_map
+from states.navigation_state import go_to_active_farm_spot
 from core.actions import wait
 
 
@@ -42,7 +44,11 @@ def bot_loop():
             handle_empty_potions()
 
         else:
-            run_farming_state()
+            if not is_in_configured_map():
+                add_log("[MAIN] Mapa incorrecto. Volviendo al spot")
+                go_to_active_farm_spot()
+            else:
+                run_farming_state()
 
         wait(3)
 
