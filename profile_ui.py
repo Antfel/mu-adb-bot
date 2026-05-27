@@ -7,8 +7,6 @@ from core.profile import (
     list_profiles
 )
 
-from coordinates.spots import MAPS
-
 
 root = tk.Toplevel()
 
