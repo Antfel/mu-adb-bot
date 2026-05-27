@@ -1,0 +1,80 @@
+# MU ADB BOT - Project Rules
+
+## Architecture
+
+This project uses a modular state-based architecture.
+
+Rules:
+
+- Do NOT create monolithic files.
+- Keep responsibilities separated.
+- Prefer extending existing modules over duplicating logic.
+- Reuse helper methods whenever possible.
+
+Project structure:
+
+- core/ → low-level actions, adb, logger, vision
+- states/ → bot states and gameplay logic
+- profiles/ → JSON runtime configuration
+- coordinates/ → map and spot definitions
+- templates/ → image templates
+- ui/ → tkinter UI files
+
+## Coding Rules
+
+- Never hardcode farm spots directly in states.
+- All farm configuration must come from profiles.
+- Use logger.log() instead of print().
+- Avoid circular imports.
+- Keep functions small and modular.
+- Prefer dictionary-driven configurations.
+- Use snake_case consistently.
+- Preserve backward compatibility whenever possible.
+
+## Navigation Rules
+
+Navigation must support:
+
+- map
+- wire
+- spot
+
+Profiles are the source of truth.
+
+Do not reintroduce active_farm_spot string-only architecture.
+
+## UI Rules
+
+Execution UI and configuration UI must remain separated.
+
+- bot_ui.py → execution only
+- profile_ui.py → profile configuration
+- map_selector_ui.py → map/wire/spot selection
+
+Do not merge these responsibilities.
+
+## Agent Behavior
+
+Before modifying multiple files:
+
+1. Explain the plan first.
+2. List impacted files.
+3. Then apply changes.
+
+Avoid unnecessary refactors.
+
+Prefer incremental safe changes.
+
+## Templates
+
+Never rename template files automatically.
+
+## Goal
+
+Maintain scalable architecture for:
+
+- multiple maps
+- multiple wires
+- multiple profiles
+- reusable navigation
+- future combat extensions

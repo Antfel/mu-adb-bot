@@ -1,0 +1,11 @@
+{
+    "active_farm_spot": "kalima_1_spot_1",
+    "hp_potion_stacks": 10,
+    "mp_potion_stacks": 10,
+    "enable_potion_recovery": true,
+    "enable_death_recovery": true,
+    "enable_auto_attack": true,
+    "map": "kalima_1",
+    "wire": 1,
+    "spot": "spot_1"
+}
