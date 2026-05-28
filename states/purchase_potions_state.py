@@ -7,7 +7,7 @@ from core.profile import load_profile
 from states.potion_state import is_hp_potion_empty, is_mana_potion_empty
 
 
-def handle_empty_potions():
+def handle_empty_potions(device_id):
 
     profile = load_profile()
 
@@ -40,4 +40,4 @@ def handle_empty_potions():
 
     log("[POTION] Tienda Cerrada. Volviendo al spot")
 
-    return go_to_active_farm_spot()
+    return go_to_active_farm_spot(device_id)

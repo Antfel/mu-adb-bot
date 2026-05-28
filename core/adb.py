@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+from core.logger import log
+
 
 DEVICE_ID = None
 
@@ -12,6 +14,15 @@ def set_device(device_id):
 
 def get_device():
     return DEVICE_ID
+
+
+def bind_adb_device(device_id):
+    if not device_id or not str(device_id).strip():
+        raise RuntimeError("[ADB] No device selected")
+    device_id = str(device_id).strip()
+    set_device(device_id)
+    log(f"[ADB] Using device: {device_id}")
+    return device_id
 
 
 def run_adb(args, capture_output=True):

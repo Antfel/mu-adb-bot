@@ -7,7 +7,7 @@ from tkinter import ttk
 from core.profile import list_profiles, set_current_profile
 from core.profile import load_profile, save_profile
 from core.logger import log
-from core.adb import set_device
+from core.adb import get_device, set_device
 from core.device_manager import get_device_screenshot, list_adb_devices
 from collections import deque
 from states.death_state import is_dead
@@ -45,15 +45,26 @@ def add_log(message):
     log(message)
 
 
+def _active_device_id():
+    device_id = get_device() or device_var.get().strip()
+    if not device_id:
+        log("[ADB] No device selected")
+    return device_id
+
+
 def navigate_with_retry():
-    if go_to_active_farm_spot():
+    device_id = _active_device_id()
+    if not device_id:
+        return False
+
+    if go_to_active_farm_spot(device_id):
         return True
 
     set_bot_status("working")
     log("[MAIN] Navegación falló. Limpiando UI y reintentando")
-    clean_game_ui()
+    clean_game_ui(device_id)
 
-    if go_to_active_farm_spot():
+    if go_to_active_farm_spot(device_id):
         return True
 
     set_bot_status("error")
@@ -92,14 +103,20 @@ def bot_loop():
             if is_dead():
                 set_bot_status("working")
                 add_log("[MAIN] Personaje muerto")
-                if not recover_if_dead():
+                device_id = _active_device_id()
+                if not device_id:
+                    set_bot_status("error")
+                elif not recover_if_dead(device_id):
                     log("[MAIN] Recuperación falló")
                     set_bot_status("error")
 
             elif is_any_potion_empty():
                 set_bot_status("working")
                 add_log("[MAIN] Pociones agotadas")
-                if not handle_empty_potions():
+                device_id = _active_device_id()
+                if not device_id:
+                    set_bot_status("error")
+                elif not handle_empty_potions(device_id):
                     log("[MAIN] Compra de pociones falló")
                     set_bot_status("error")
 

@@ -9,6 +9,16 @@
             "wire": 1,
             "x": 1272,
             "y": 623
+        },
+        {
+            "id": "kalima_1_elf_buff",
+            "profile": "kalima_1.json",
+            "type": "elf_buff",
+            "name": "Elf Buff",
+            "map": "divine_realm_1",
+            "wire": 1,
+            "x": 1420,
+            "y": 591
         }
     ]
 }

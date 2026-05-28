@@ -1,7 +1,7 @@
 import time
 
 from core.logger import log
-from core.adb import tap, swipe
+from core.adb import bind_adb_device, tap, swipe
 from core.actions import wait, run_sequence
 from core.screen import get_screen
 from core.vision import find_template
@@ -18,9 +18,11 @@ _WIRE_THRESHOLD = 0.8
 AUTO_NAVIGATING_TEMPLATE = "templates/ui/common/auto_navigating.png"
 _AUTO_NAV_THRESHOLD = 0.70
 _AUTO_NAV_TIMEOUT = 180
+_AUTO_NAV_POLL_SECONDS = 1
 _AUTO_NAV_INITIAL_WAIT = 2
-_AUTO_NAV_POLL_INTERVAL = 1
-_AUTO_NAV_POST_FINISH_WAIT = 1.5
+_AUTO_NAV_FINISH_GRACE_SECONDS = 1.5
+_AUTO_NAV_MISSES_TO_FINISH = 3
+_AUTO_NAV_START_ATTEMPTS = 4
 
 
 def _normalize_wire_id(wire_id):
@@ -243,21 +245,44 @@ def wait_until_navigation_complete():
     log("[NAVIGATION] Waiting for auto navigation to start")
     wait(_AUTO_NAV_INITIAL_WAIT)
 
-    if not _is_auto_navigating():
-        log("[NAVIGATION] auto navigation template not detected")
-        return
+    tracking = False
+    for attempt in range(1, _AUTO_NAV_START_ATTEMPTS + 1):
+        if _is_auto_navigating():
+            log("[NAVIGATION] Auto navigating detected")
+            tracking = True
+            break
+        if attempt < _AUTO_NAV_START_ATTEMPTS:
+            wait(_AUTO_NAV_POLL_SECONDS)
 
-    log("[NAVIGATION] Auto navigating detected")
+    if not tracking:
+        log(
+            "[NAVIGATION] Auto navigation template not detected "
+            "after start attempts"
+        )
+        return True
 
     start = time.time()
-    while _is_auto_navigating():
+    misses = 0
+
+    while True:
         if time.time() - start > _AUTO_NAV_TIMEOUT:
             log("[NAVIGATION] Navigation wait timeout")
-            return
-        wait(_AUTO_NAV_POLL_INTERVAL)
+            return False
 
-    log("[NAVIGATION] Auto navigating finished")
-    wait(_AUTO_NAV_POST_FINISH_WAIT)
+        if _is_auto_navigating():
+            misses = 0
+        else:
+            misses += 1
+            log(
+                f"[NAVIGATION] Auto navigating miss "
+                f"{misses}/{_AUTO_NAV_MISSES_TO_FINISH}"
+            )
+            if misses >= _AUTO_NAV_MISSES_TO_FINISH:
+                log("[NAVIGATION] Auto navigating finished")
+                wait(_AUTO_NAV_FINISH_GRACE_SECONDS)
+                return True
+
+        wait(_AUTO_NAV_POLL_SECONDS)
 
 
 def _filter_post_spot_actions(actions):
@@ -268,6 +293,175 @@ def _filter_post_spot_actions(actions):
             continue
         filtered.append(action)
     return filtered
+
+
+def _navigation_behavior(navigation):
+    return navigation.get("behavior", "modal_enter")
+
+
+def _enter_map_modal_enter(map_def, navigation, log_prefix):
+    head = find_template_with_scroll(
+        navigation["map_head_template"],
+        threshold=0.8,
+        swipe_coords=navigation.get("map_list_swipe"),
+    )
+
+    if not head:
+        log(f"{log_prefix} Map head not found")
+        return False
+
+    tap(head["center_x"], head["center_y"])
+    wait(2)
+
+    map_option = find_template_with_scroll(
+        navigation["map_option_template"],
+        threshold=0.8,
+        swipe_coords=navigation.get("map_list_swipe"),
+    )
+
+    if not map_option:
+        log(f"{log_prefix} Map option not found")
+        return False
+
+    tap(map_option["center_x"], map_option["center_y"])
+    wait(2)
+
+    screen = get_screen()
+
+    checked = find_template(
+        screen,
+        navigation["checked_template"],
+        threshold=0.8,
+    )
+
+    if not checked:
+        log(f"{log_prefix} Map option not checked")
+        return False
+
+    log(f"{log_prefix} Map option checked")
+
+    screen = get_screen()
+
+    enter = find_template(
+        screen,
+        navigation["enter_template"],
+        threshold=0.8,
+    )
+
+    if not enter:
+        log(f"{log_prefix} Enter button not found")
+        return False
+
+    tap(enter["center_x"], enter["center_y"])
+
+    log(f"{log_prefix} Entering map")
+
+    wait(navigation.get("enter_wait", 8))
+    return True
+
+
+def _enter_map_direct_teleport(map_def, navigation, log_prefix):
+    map_option = find_template_with_scroll(
+        navigation["map_option_template"],
+        threshold=0.8,
+        swipe_coords=navigation.get("map_list_swipe"),
+    )
+
+    if not map_option:
+        log(f"{log_prefix} Map option not found")
+        return False
+
+    tap(map_option["center_x"], map_option["center_y"])
+    log(f"{log_prefix} Direct teleport selected")
+
+    wait(navigation.get("enter_wait", 8))
+    log(f"{log_prefix} Waiting for map load")
+
+    current_template = navigation.get("current_map_template")
+    if current_template:
+        screen = get_screen()
+        current_map = find_template(
+            screen,
+            current_template,
+            threshold=0.8,
+        )
+        if not current_map:
+            log(f"{log_prefix} Current map template not detected after teleport")
+            return False
+        log(f"{log_prefix} Current map confirmed")
+
+    return True
+
+
+def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]"):
+    navigation = map_def["navigation"]
+    behavior = _navigation_behavior(navigation)
+
+    if behavior == "direct_teleport":
+        return _enter_map_direct_teleport(map_def, navigation, log_prefix)
+
+    if behavior != "modal_enter":
+        log(
+            f"{log_prefix} Unknown navigation behavior {behavior!r}; "
+            "using modal_enter"
+        )
+    return _enter_map_modal_enter(map_def, navigation, log_prefix)
+
+
+def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION]"):
+    bind_adb_device(device_id)
+
+    if map_id == "divine_realm_1":
+        log("[MAP] Entering divine_realm_1")
+
+    map_def = load_map_definition(map_id)
+    navigation = map_def.get("navigation")
+    if not navigation:
+        log(f"{log_prefix} Map {map_id} has no navigation config")
+        return False, map_def
+
+    if map_id == "divine_realm_1":
+        log("[MAP] divine_realm_1 navigation ready")
+
+    wire_id = _normalize_wire_id(wire_id)
+
+    log(
+        f"{log_prefix} Going to: {map_def['name']} | "
+        f"wire {wire_id} | behavior {_navigation_behavior(navigation)}"
+    )
+
+    log(f"{log_prefix} Cleaning UI before navigation")
+    clean_game_ui(device_id)
+
+    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+    wait(2)
+
+    if not _enter_map_by_behavior(map_def, log_prefix):
+        return False, map_def
+
+    if not switch_to_wire(map_def, wire_id):
+        return False, map_def
+
+    return True, map_def
+
+
+def tap_visual_location(x, y, device_id, log_prefix="[NAVIGATION]", label="location"):
+    bind_adb_device(device_id)
+    log(f"{log_prefix} Opening map inside target map")
+
+    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+    wait(2)
+
+    log(f"{log_prefix} Clicking {label} at {x},{y}")
+
+    tap(x, y)
+
+    log(f"{log_prefix} Closing map")
+
+    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+    wait(1)
+
+    wait_until_navigation_complete()
 
 
 def _resolve_farm_destination(active_farm_spot, spot_id, map_def):
@@ -303,7 +497,9 @@ def _resolve_farm_destination(active_farm_spot, spot_id, map_def):
     }
 
 
-def go_to_active_farm_spot():
+def go_to_active_farm_spot(device_id):
+    bind_adb_device(device_id)
+
     profile = load_profile()
     profile_name = get_current_profile_name()
     spot_id = profile.get("spot")
@@ -332,85 +528,11 @@ def go_to_active_farm_spot():
             f"{map_id} wire {wire_id}"
         )
 
-    map_def = load_map_definition(map_id)
-    navigation = map_def["navigation"]
-
-    log(
-        f"[NAVIGATION] Going to: {map_def['name']} | "
-        f"wire {wire_id}"
+    nav_ok, map_def = navigate_to_map_and_wire(
+        map_id, wire_id, device_id, log_prefix="[NAVIGATION]"
     )
-
-    log("[NAVIGATION] Cleaning UI before navigation")
-    clean_game_ui()
-
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(2)
-
-    head = find_template_with_scroll(
-        navigation["map_head_template"],
-        threshold=0.8,
-        swipe_coords=navigation.get("map_list_swipe"),
-    )
-
-    if not head:
-        log("[NAVIGATION] Map head not found")
+    if not nav_ok:
         return False
-
-    tap(head["center_x"], head["center_y"])
-    wait(2)
-
-    map_option = find_template_with_scroll(
-        navigation["map_option_template"],
-        threshold=0.8,
-        swipe_coords=navigation.get("map_list_swipe"),
-    )
-
-    if not map_option:
-        log("[NAVIGATION] Map option not found")
-        return False
-
-    tap(map_option["center_x"], map_option["center_y"])
-    wait(2)
-
-    screen = get_screen()
-
-    checked = find_template(
-        screen,
-        navigation["checked_template"],
-        threshold=0.8,
-    )
-
-    if not checked:
-        log("[NAVIGATION] Map option not checked")
-        return False
-
-    log("[NAVIGATION] Map option checked")
-
-    screen = get_screen()
-
-    enter = find_template(
-        screen,
-        navigation["enter_template"],
-        threshold=0.8,
-    )
-
-    if not enter:
-        log("[NAVIGATION] Enter button not found")
-        return False
-
-    tap(enter["center_x"], enter["center_y"])
-
-    log("[NAVIGATION] Entering map")
-
-    wait(navigation.get("enter_wait", 8))
-
-    if not switch_to_wire(map_def, wire_id):
-        return False
-
-    log("[NAVIGATION] Opening map inside target map")
-
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(2)
 
     farm_dest = _resolve_farm_destination(active_farm_spot, spot_id, map_def)
     if not farm_dest:
@@ -425,14 +547,12 @@ def go_to_active_farm_spot():
     else:
         log(f"[NAVIGATION] Using legacy spot: {spot_id}")
 
-    log("[NAVIGATION] Clicking farm spot")
-
-    tap(farm_dest["x"], farm_dest["y"])
-
-    log("[NAVIGATION] Closing map")
-
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(1)
+    tap_visual_location(
+        farm_dest["x"],
+        farm_dest["y"],
+        device_id,
+        label="farm spot",
+    )
 
     legacy_spot = farm_dest.get("legacy_spot")
     post_spot_actions = _filter_post_spot_actions(
@@ -442,7 +562,6 @@ def go_to_active_farm_spot():
     if post_spot_actions:
         run_sequence(post_spot_actions)
 
-    wait_until_navigation_complete()
     ensure_auto_mode()
 
     log("[NAVIGATION] Arrived to farm spot")

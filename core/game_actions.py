@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.logger import log
+from core.adb import bind_adb_device
 from core.actions import tap_template, tap_xy, wait
 from core.screen import get_screen
 from core.vision import find_template
@@ -16,8 +17,9 @@ from states.inventory_state import (
 )
 
 
-def clean_game_ui(max_close_attempts=3):
+def clean_game_ui(device_id, max_close_attempts=3):
     try:
+        bind_adb_device(device_id)
         log("[UI] Cleaning game UI")
 
         if Path(CLOSE_X_TEMPLATE).is_file():
