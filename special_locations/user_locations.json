@@ -1,24 +1,24 @@
 {
     "locations": [
         {
-            "id": "kalima_1_farm_spot",
-            "profile": "kalima_1.json",
-            "type": "farm_spot",
-            "name": "Farm Spot",
-            "map": "temple_of_kalima_1",
-            "wire": 1,
-            "x": 1272,
-            "y": 623
-        },
-        {
             "id": "kalima_1_elf_buff",
             "profile": "kalima_1.json",
             "type": "elf_buff",
             "name": "Elf Buff",
             "map": "divine_realm_1",
             "wire": 1,
-            "x": 1420,
-            "y": 591
+            "x": 1411,
+            "y": 586
+        },
+        {
+            "id": "kalima_1_farm_spot",
+            "profile": "kalima_1.json",
+            "type": "farm_spot",
+            "name": "Farm Spot",
+            "map": "temple_of_kalima_1",
+            "wire": 2,
+            "x": 1277,
+            "y": 626
         }
     ]
 }

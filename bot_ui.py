@@ -17,6 +17,8 @@ from states.purchase_potions_state import handle_empty_potions
 from states.farming import run_farming_state
 from states.map_state import is_in_configured_map
 from states.navigation_state import go_to_active_farm_spot
+from states.elf_buff_check_state import has_elf_buff
+from states.elf_buff_state import go_to_elf_buff_and_return
 from core.game_actions import clean_game_ui
 from core.window_utils import center_window
 from core.actions import wait
@@ -119,6 +121,16 @@ def bot_loop():
                 elif not handle_empty_potions(device_id):
                     log("[MAIN] Compra de pociones falló")
                     set_bot_status("error")
+
+            elif not has_elf_buff():
+                set_bot_status("working")
+                add_log("[MAIN] Elf buff no activo. Buscando buff")
+                device_id = _active_device_id()
+                if not device_id:
+                    set_bot_status("error")
+                elif not go_to_elf_buff_and_return(device_id):
+                    set_bot_status("error")
+                    log("[MAIN] Falló búsqueda de elf buff")
 
             else:
                 if not is_in_configured_map():
