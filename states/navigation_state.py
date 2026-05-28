@@ -285,6 +285,33 @@ def wait_until_navigation_complete():
         wait(_AUTO_NAV_POLL_SECONDS)
 
 
+def wait_until_map_loaded(map_def, timeout=None, poll_interval=0.5):
+    navigation = map_def.get("navigation", {})
+    current_template = navigation.get("current_map_template")
+    enter_wait = navigation.get("enter_wait", 8)
+    if timeout is None:
+        timeout = enter_wait if enter_wait else 10
+
+    if not current_template:
+        wait(timeout)
+        return True
+
+    start = time.time()
+    while time.time() - start < timeout:
+        screen = get_screen()
+        if find_template(
+            screen,
+            current_template,
+            threshold=0.8,
+        ):
+            log("[NAVIGATION] Map loaded confirmed")
+            return True
+        wait(poll_interval)
+
+    log("[NAVIGATION] Map load timeout; continuing")
+    return False
+
+
 def _filter_post_spot_actions(actions):
     filtered = []
     for action in actions:
@@ -356,7 +383,7 @@ def _enter_map_modal_enter(map_def, navigation, log_prefix):
 
     log(f"{log_prefix} Entering map")
 
-    wait(navigation.get("enter_wait", 8))
+    wait_until_map_loaded(map_def)
     return True
 
 
@@ -374,22 +401,7 @@ def _enter_map_direct_teleport(map_def, navigation, log_prefix):
     tap(map_option["center_x"], map_option["center_y"])
     log(f"{log_prefix} Direct teleport selected")
 
-    wait(navigation.get("enter_wait", 8))
-    log(f"{log_prefix} Waiting for map load")
-
-    current_template = navigation.get("current_map_template")
-    if current_template:
-        screen = get_screen()
-        current_map = find_template(
-            screen,
-            current_template,
-            threshold=0.8,
-        )
-        if not current_map:
-            log(f"{log_prefix} Current map template not detected after teleport")
-            return False
-        log(f"{log_prefix} Current map confirmed")
-
+    wait_until_map_loaded(map_def)
     return True
 
 
