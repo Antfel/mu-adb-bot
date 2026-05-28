@@ -1,0 +1,16 @@
+{
+  "id": "endless_abyss_1",
+  "name": "Endless Abyss 1",
+  "group": "Endless Abyss",
+  "submap": 1,
+  "requirements": {
+    "min_level": 300
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Endless_abyss/maintenance/endless_abyss_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 18,
+  "wire": 1
+}

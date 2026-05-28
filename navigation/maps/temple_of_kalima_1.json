@@ -1,12 +1,17 @@
 {
-  "id": "kalima_1",
-  "name": "Kalima Temple 1",
+  "id": "temple_of_kalima_1",
+  "name": "Temple of Kalima 1",
+  "group": "Temple of Kalima",
+  "submap": 1,
+  "requirements": {
+    "min_level": 350
+  },
   "navigation": {
-    "current_map_template": "templates/maps/Kalima_temple/current/kalima_1_current.png",
-    "map_head_template": "templates/maps/Kalima_temple/mapsui/kalima_temple_head.png",
-    "map_option_template": "templates/maps/Kalima_temple/mapsui/kalima_temple_1.png",
-    "checked_template": "templates/maps/Kalima_temple/modalui/kalima_1_checked.png",
-    "enter_template": "templates/maps/Kalima_temple/modalui/enter_button.png",
+    "current_map_template": "templates/maps/Temple_of_kalima/current/kalima_1_current.png",
+    "map_head_template": "templates/maps/Temple_of_kalima/mapsui/kalima_temple_head.png",
+    "map_option_template": "templates/maps/Temple_of_kalima/mapsui/kalima_temple_1.png",
+    "checked_template": "templates/maps/Temple_of_kalima/modalui/kalima_1_checked.png",
+    "enter_template": "templates/maps/Temple_of_kalima/modalui/enter_button.png",
     "enter_wait": 8,
     "map_list_swipe": {
       "x1": 530,
@@ -19,27 +24,49 @@
   "wires": {
     "1": {
       "name": "Wire 1",
-      "spots": ["spot_1"]
+      "spots": [
+        "spot_1"
+      ]
     },
     "2": {
       "name": "Wire 2",
-      "spots": ["spot_1"]
+      "spots": [
+        "spot_1"
+      ]
     }
   },
   "spots": {
     "spot_1": {
       "name": "Spot 1",
-      "spot_click": { "x": 1145, "y": 768 },
+      "spot_click": {
+        "x": 1145,
+        "y": 768
+      },
       "post_spot_actions": [
-        { "type": "wait", "seconds": 10 },
-        { "type": "ensure_auto_mode" }
+        {
+          "type": "wait",
+          "seconds": 10
+        },
+        {
+          "type": "ensure_auto_mode"
+        }
       ],
       "arrival_wait": 20
     }
   },
-  "wire": {
+  "wire": 2,
+  "maintenance": {
+    "map_ui_image": "templates/maps/Temple_of_kalima/maintenance/temple_of_kalima_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 21,
+  "wire_switch": {
     "enabled": true,
-    "available_wires": [1, 2],
+    "available_wires": [
+      1,
+      2
+    ],
     "hud_detection": true,
     "templates": {
       "switch_button": "templates/wires/common/switch_button.png",
@@ -64,6 +91,5 @@
       "max_attempts": 5
     },
     "switch_wait": 5
-  } 
+  }
 }
-

@@ -1,17 +1,20 @@
 import tkinter as tk
 from tkinter import ttk
 
+from core.logger import log
+from core.window_utils import center_window
 from core.profile import (
+    _write_current_profile_pointer,
     load_profile,
     save_profile,
-    list_profiles
+    list_profiles,
 )
 
 
 root = tk.Toplevel()
 
 root.title("Profile Manager")
-root.geometry("400x500")
+center_window(root, 400, 580)
 
 
 # profiles
@@ -45,6 +48,24 @@ def open_map_selector():
     map_selector_ui.open_selector(profile_data, refresh_profile_fields)
 
 
+def open_farm_spot_selector():
+    profile_name = selected_profile.get()
+    if not profile_name:
+        log("[PROFILE] Seleccione un perfil primero")
+        return
+    import location_selector_ui
+    location_selector_ui.open_location_selector("farm_spot", profile_name)
+
+
+def open_elf_buff_selector():
+    profile_name = selected_profile.get()
+    if not profile_name:
+        log("[PROFILE] Seleccione un perfil primero")
+        return
+    import location_selector_ui
+    location_selector_ui.open_location_selector("elf_buff", profile_name)
+
+
 map_button = tk.Button(
     root,
     text="Seleccionar Mapa / Wire / Spot",
@@ -53,6 +74,22 @@ map_button = tk.Button(
 )
 
 map_button.pack(pady=10)
+
+farm_spot_button = tk.Button(
+    root,
+    text="Configurar Farm Spot Visual",
+    width=28,
+    command=open_farm_spot_selector,
+)
+farm_spot_button.pack(pady=5)
+
+elf_buff_button = tk.Button(
+    root,
+    text="Configurar Elf Buff",
+    width=28,
+    command=open_elf_buff_selector,
+)
+elf_buff_button.pack(pady=5)
 
 selected_map_label = tk.Label(
     root,
@@ -68,6 +105,8 @@ def load_selected_profile(event=None):
     profile_name = selected_profile.get()
 
     profile_data = load_profile(f"profiles/{profile_name}")
+
+    _write_current_profile_pointer(profile_name)
 
     hp_var.set(profile_data["hp_potion_stacks"])
     mp_var.set(profile_data["mp_potion_stacks"])
@@ -136,7 +175,7 @@ def save_current_profile():
         f"profiles/{profile_name}"
     )
 
-    print("[PROFILE] Guardado")
+    log("[PROFILE] Guardado")
 
 
 save_button = tk.Button(

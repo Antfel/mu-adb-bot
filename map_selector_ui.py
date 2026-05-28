@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from core.navigation_config import list_available_maps, load_map_definition
+from core.window_utils import center_window
 
 
 def _wire_label(map_id, wire_id):
@@ -26,7 +27,7 @@ def open_selector(profile_data, on_save_callback=None):
 
     window = tk.Toplevel()
     window.title("Seleccionar Mapa")
-    window.geometry("360x300")
+    center_window(window, 360, 300)
 
     available_maps = list_available_maps()
     default_map = profile_data.get("map", available_maps[0] if available_maps else "")

@@ -1,0 +1,16 @@
+{
+  "id": "divine_realm_1",
+  "name": "Divine Realm 1",
+  "group": "Divine Realm",
+  "submap": 1,
+  "requirements": {
+    "min_level": 300
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Divine_realm/maintenance/divine_realm_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 15,
+  "wire": 1
+}

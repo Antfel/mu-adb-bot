@@ -1,17 +1,26 @@
+import time
+
 from core.logger import log
 from core.adb import tap, swipe
 from core.actions import wait, run_sequence
 from core.screen import get_screen
 from core.vision import find_template
 from core.ui import find_template_with_scroll
-from core.profile import load_profile
+from core.profile import get_current_profile_name, load_profile
 from core.navigation_config import load_map_definition
-from core.game_actions import clean_game_ui
+from core.game_actions import clean_game_ui, ensure_auto_mode
+from core.special_locations import get_farm_spot_location
 
 
 MAP_BUTTON = {"x": 2440, "y": 120}
 
 _WIRE_THRESHOLD = 0.8
+AUTO_NAVIGATING_TEMPLATE = "templates/ui/common/auto_navigating.png"
+_AUTO_NAV_THRESHOLD = 0.70
+_AUTO_NAV_TIMEOUT = 180
+_AUTO_NAV_INITIAL_WAIT = 2
+_AUTO_NAV_POLL_INTERVAL = 1
+_AUTO_NAV_POST_FINISH_WAIT = 1.5
 
 
 def _normalize_wire_id(wire_id):
@@ -126,8 +135,18 @@ def _confirm_wire_switch(wire_config):
     return True
 
 
+def _get_wire_switch_config(map_def):
+    wire_config = map_def.get("wire_switch")
+    if isinstance(wire_config, dict):
+        return wire_config
+    legacy = map_def.get("wire")
+    if isinstance(legacy, dict):
+        return legacy
+    return None
+
+
 def switch_to_wire(map_def, wire_id):
-    wire_config = map_def.get("wire")
+    wire_config = _get_wire_switch_config(map_def)
     if not wire_config:
         log("[NAVIGATION] Wire switching not configured")
         return True
@@ -208,19 +227,117 @@ def switch_to_wire(map_def, wire_id):
     return True
 
 
+def _is_auto_navigating():
+    screen = get_screen()
+    return (
+        find_template(
+            screen,
+            AUTO_NAVIGATING_TEMPLATE,
+            threshold=_AUTO_NAV_THRESHOLD,
+        )
+        is not None
+    )
+
+
+def wait_until_navigation_complete():
+    log("[NAVIGATION] Waiting for auto navigation to start")
+    wait(_AUTO_NAV_INITIAL_WAIT)
+
+    if not _is_auto_navigating():
+        log("[NAVIGATION] auto navigation template not detected")
+        return
+
+    log("[NAVIGATION] Auto navigating detected")
+
+    start = time.time()
+    while _is_auto_navigating():
+        if time.time() - start > _AUTO_NAV_TIMEOUT:
+            log("[NAVIGATION] Navigation wait timeout")
+            return
+        wait(_AUTO_NAV_POLL_INTERVAL)
+
+    log("[NAVIGATION] Auto navigating finished")
+    wait(_AUTO_NAV_POST_FINISH_WAIT)
+
+
+def _filter_post_spot_actions(actions):
+    filtered = []
+    for action in actions:
+        action_type = action.get("type")
+        if action_type in ("wait", "ensure_auto_mode"):
+            continue
+        filtered.append(action)
+    return filtered
+
+
+def _resolve_farm_destination(active_farm_spot, spot_id, map_def):
+    if active_farm_spot:
+        log(
+            f"[NAVIGATION] Visual farm spot found: "
+            f"{active_farm_spot.get('id')} "
+            f"({active_farm_spot['x']},{active_farm_spot['y']})"
+        )
+        legacy_spot = map_def.get("spots", {}).get(spot_id) if spot_id else None
+        return {
+            "x": active_farm_spot["x"],
+            "y": active_farm_spot["y"],
+            "source": "visual",
+            "legacy_spot": legacy_spot,
+        }
+
+    log("[NAVIGATION] Visual farm spot not found; using legacy destination")
+
+    if not spot_id:
+        return None
+
+    legacy_spot = map_def.get("spots", {}).get(spot_id)
+    if not legacy_spot or not legacy_spot.get("spot_click"):
+        return None
+
+    spot_click = legacy_spot["spot_click"]
+    return {
+        "x": spot_click["x"],
+        "y": spot_click["y"],
+        "source": "legacy",
+        "legacy_spot": legacy_spot,
+    }
+
+
 def go_to_active_farm_spot():
     profile = load_profile()
-    map_id = profile["map"]
-    wire_id = profile["wire"]
-    spot_id = profile["spot"]
+    profile_name = get_current_profile_name()
+    spot_id = profile.get("spot")
+
+    active_farm_spot = None
+    if profile_name:
+        active_farm_spot = get_farm_spot_location(profile_name)
+    else:
+        log(
+            "[NAVIGATION] Current profile name unavailable; "
+            "using profile map/wire and legacy farm spot"
+        )
+
+    if active_farm_spot:
+        map_id = active_farm_spot["map"]
+        wire_id = _normalize_wire_id(active_farm_spot["wire"])
+        log(
+            f"[NAVIGATION] Using active farm location config: "
+            f"{map_id} wire {wire_id}"
+        )
+    else:
+        map_id = profile["map"]
+        wire_id = _normalize_wire_id(profile["wire"])
+        log(
+            f"[NAVIGATION] Using profile map/wire config: "
+            f"{map_id} wire {wire_id}"
+        )
 
     map_def = load_map_definition(map_id)
     navigation = map_def["navigation"]
-    spot = map_def["spots"][spot_id]
 
     log(
         f"[NAVIGATION] Going to: {map_def['name']} | "
-        f"{wire_id} | {spot['name']}"
+        f"wire {wire_id}"
     )
 
     log("[NAVIGATION] Cleaning UI before navigation")
@@ -295,20 +412,38 @@ def go_to_active_farm_spot():
     tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
     wait(2)
 
-    spot_click = spot["spot_click"]
+    farm_dest = _resolve_farm_destination(active_farm_spot, spot_id, map_def)
+    if not farm_dest:
+        log("[NAVIGATION] No visual or legacy farm spot configured")
+        return False
+
+    if farm_dest["source"] == "visual":
+        log(
+            f"[NAVIGATION] Using visual farm spot: "
+            f"{farm_dest['x']},{farm_dest['y']}"
+        )
+    else:
+        log(f"[NAVIGATION] Using legacy spot: {spot_id}")
 
     log("[NAVIGATION] Clicking farm spot")
 
-    tap(spot_click["x"], spot_click["y"])
+    tap(farm_dest["x"], farm_dest["y"])
 
     log("[NAVIGATION] Closing map")
 
     tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
     wait(1)
 
-    run_sequence(spot.get("post_spot_actions", []))
+    legacy_spot = farm_dest.get("legacy_spot")
+    post_spot_actions = _filter_post_spot_actions(
+        legacy_spot.get("post_spot_actions", []) if legacy_spot else []
+    )
 
-    wait(spot.get("arrival_wait", 20))
+    if post_spot_actions:
+        run_sequence(post_spot_actions)
+
+    wait_until_navigation_complete()
+    ensure_auto_mode()
 
     log("[NAVIGATION] Arrived to farm spot")
 

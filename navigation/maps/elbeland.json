@@ -1,0 +1,16 @@
+{
+  "id": "elbeland",
+  "name": "Elbeland",
+  "group": "Elbeland",
+  "submap": 1,
+  "requirements": {
+    "min_level": 1
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Elbeland/maintenance/elbeland_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 4,
+  "wire": 1
+}

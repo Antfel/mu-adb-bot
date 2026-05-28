@@ -1,0 +1,16 @@
+{
+  "id": "dungeon_2",
+  "name": "Dungeon 2",
+  "group": "Dungeon",
+  "submap": 2,
+  "requirements": {
+    "min_level": 30
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Dungeon/maintenance/dungeon_2_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 6,
+  "wire": 3
+}

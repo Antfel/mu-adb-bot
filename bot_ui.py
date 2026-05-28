@@ -18,6 +18,7 @@ from states.farming import run_farming_state
 from states.map_state import is_in_configured_map
 from states.navigation_state import go_to_active_farm_spot
 from core.game_actions import clean_game_ui
+from core.window_utils import center_window
 from core.actions import wait
 
 
@@ -267,7 +268,7 @@ def refresh_devices():
 
 root = tk.Tk()
 root.title("MU ADB Bot")
-root.geometry("420x640")
+center_window(root, 420, 640)
 
 title_label = tk.Label(root, text="MU ADB Bot", font=("Arial", 18))
 title_label.pack(pady=15)

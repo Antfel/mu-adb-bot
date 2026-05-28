@@ -1,0 +1,16 @@
+{
+  "id": "purgatory_of_misery_1",
+  "name": "Purgatory of Misery 1",
+  "group": "Purgatory of Misery",
+  "submap": 1,
+  "requirements": {
+    "min_level": 300
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Purgatory_of_misery/maintenance/purgatory_of_misery_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 17,
+  "wire": 1
+}
