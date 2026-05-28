@@ -1,10 +1,69 @@
+from pathlib import Path
+
 from core.logger import log
 from core.actions import tap_template, tap_xy, wait
-from coordinates.ui import CLOSE_BUTTON
+from core.screen import get_screen
+from core.vision import find_template
+from coordinates.ui import (
+    CHAT_CLOSE_BUTTON_TEMPLATE,
+    CHAT_OPEN_TEMPLATE,
+    CLOSE_BUTTON,
+    CLOSE_X_TEMPLATE,
+)
 from states.inventory_state import (
     is_inventory_open,
     is_inventory_closed
 )
+
+
+def clean_game_ui(max_close_attempts=3):
+    try:
+        log("[UI] Cleaning game UI")
+
+        if Path(CLOSE_X_TEMPLATE).is_file():
+            for attempt in range(max_close_attempts):
+                screen = get_screen()
+                match = find_template(screen, CLOSE_X_TEMPLATE, threshold=0.8)
+
+                if not match:
+                    break
+
+                log(f"[UI] Closing window via X ({attempt + 1}/{max_close_attempts})")
+                tap_xy(match["center_x"], match["center_y"])
+                wait(0.5)
+        else:
+            log(f"[UI] Close X template missing: {CLOSE_X_TEMPLATE}")
+
+        if Path(CHAT_OPEN_TEMPLATE).is_file():
+            screen = get_screen()
+            chat_open = find_template(screen, CHAT_OPEN_TEMPLATE, threshold=0.8)
+
+            if chat_open:
+                log("[UI] Chat abierto detectado")
+
+                if Path(CHAT_CLOSE_BUTTON_TEMPLATE).is_file():
+                    screen = get_screen()
+                    close_button = find_template(
+                        screen,
+                        CHAT_CLOSE_BUTTON_TEMPLATE,
+                        threshold=0.8,
+                    )
+
+                    if close_button:
+                        tap_xy(close_button["center_x"], close_button["center_y"])
+                        wait(0.5)
+                        log("[UI] Chat cerrado")
+                    else:
+                        log("[UI] Botón cerrar chat no encontrado")
+        else:
+            log(f"[UI] Chat open template missing: {CHAT_OPEN_TEMPLATE}")
+
+        ensure_inventory_closed()
+        return True
+
+    except Exception as e:
+        log(f"[ERROR] clean_game_ui failed: {e}")
+        return False
 
 
 def open_inventory():

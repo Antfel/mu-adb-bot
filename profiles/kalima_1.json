@@ -6,6 +6,6 @@
     "enable_death_recovery": true,
     "enable_auto_attack": true,
     "map": "kalima_1",
-    "wire": 1,
+    "wire": 2,
     "spot": "spot_1"
 }

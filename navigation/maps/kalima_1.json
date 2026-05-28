@@ -14,13 +14,6 @@
       "x2": 530,
       "y2": 600,
       "duration": 250
-    },
-    "wire_list_swipe": {
-      "x1": 530,
-      "y1": 708,
-      "x2": 530,
-      "y2": 600,
-      "duration": 250
     }
   },
   "wires": {
@@ -30,18 +23,6 @@
     },
     "2": {
       "name": "Wire 2",
-      "spots": ["spot_1"]
-    },
-    "3": {
-      "name": "Wire 3",
-      "spots": ["spot_1"]
-    },
-    "4": {
-      "name": "Wire 4",
-      "spots": ["spot_1"]
-    },
-    "5": {
-      "name": "Wire 5",
       "spots": ["spot_1"]
     }
   },
@@ -55,6 +36,34 @@
       ],
       "arrival_wait": 20
     }
-  }
+  },
+  "wire": {
+    "enabled": true,
+    "available_wires": [1, 2],
+    "hud_detection": true,
+    "templates": {
+      "switch_button": "templates/wires/common/switch_button.png",
+      "popup_open": "templates/wires/common/wire_popup_open.png",
+      "enter_button": "templates/wires/common/wire_enter_button.png",
+      "selected": "templates/wires/common/wire_selected.png",
+      "hud": {
+        "1": "templates/wires/common/wire_1_hud.png",
+        "2": "templates/wires/common/wire_2_hud.png"
+      },
+      "options": {
+        "1": "templates/wires/common/wire_1_option.png",
+        "2": "templates/wires/common/wire_2_option.png"
+      }
+    },
+    "popup_scroll": {
+      "x1": 930,
+      "y1": 560,
+      "x2": 930,
+      "y2": 300,
+      "duration": 300,
+      "max_attempts": 5
+    },
+    "switch_wait": 5
+  } 
 }
 

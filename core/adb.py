@@ -2,10 +2,22 @@ import subprocess
 from pathlib import Path
 
 
-DEVICE_ID = "127.0.0.1:5555"
+DEVICE_ID = None
+
+
+def set_device(device_id):
+    global DEVICE_ID
+    DEVICE_ID = device_id
+
+
+def get_device():
+    return DEVICE_ID
 
 
 def run_adb(args, capture_output=True):
+    if not DEVICE_ID:
+        raise RuntimeError("[ADB] No device selected")
+
     command = ["adb", "-s", DEVICE_ID] + args
 
     result = subprocess.run(
@@ -38,6 +50,10 @@ def keyevent(keycode):
     run_adb(["shell", "input", "keyevent", str(keycode)], capture_output=False)
 
 
+def press_back():
+    keyevent(4)
+
+
 def screenshot(path="screenshots/current.png"):
     Path("screenshots").mkdir(exist_ok=True)
 
@@ -47,17 +63,3 @@ def screenshot(path="screenshots/current.png"):
         f.write(image_data)
 
     return path
-
-
-def swipe(x1, y1, x2, y2, duration=300):
-
-    run_adb([
-        "shell",
-        "input",
-        "swipe",
-        str(x1),
-        str(y1),
-        str(x2),
-        str(y2),
-        str(duration)
-    ], capture_output=False)
