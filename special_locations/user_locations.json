@@ -7,7 +7,7 @@
             "name": "Elf Buff",
             "map": "divine_realm_1",
             "wire": 1,
-            "x": 1411,
+            "x": 1420,
             "y": 586
         },
         {
@@ -17,8 +17,8 @@
             "name": "Farm Spot",
             "map": "temple_of_kalima_1",
             "wire": 2,
-            "x": 1277,
-            "y": 626
+            "x": 1522,
+            "y": 415
         }
     ]
 }

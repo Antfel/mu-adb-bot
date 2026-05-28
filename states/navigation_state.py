@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 from core.logger import log
 from core.adb import bind_adb_device, tap, swipe
@@ -10,9 +11,11 @@ from core.profile import get_current_profile_name, load_profile
 from core.navigation_config import load_map_definition
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.special_locations import get_farm_spot_location
+from coordinates.ui import CLOSE_X_TEMPLATE, MAP_WINDOW_OPEN_TEMPLATE
 
 
 MAP_BUTTON = {"x": 2440, "y": 120}
+_MAP_WINDOW_THRESHOLD = 0.8
 
 _WIRE_THRESHOLD = 0.8
 AUTO_NAVIGATING_TEMPLATE = "templates/ui/common/auto_navigating.png"
@@ -285,6 +288,70 @@ def wait_until_navigation_complete():
         wait(_AUTO_NAV_POLL_SECONDS)
 
 
+def _is_map_window_open():
+    screen = get_screen()
+    return (
+        find_template(
+            screen,
+            MAP_WINDOW_OPEN_TEMPLATE,
+            threshold=_MAP_WINDOW_THRESHOLD,
+        )
+        is not None
+    )
+
+
+def wait_until_map_window_open(timeout=5, poll_interval=0.3):
+    start = time.time()
+    while time.time() - start < timeout:
+        if _is_map_window_open():
+            return True
+        wait(poll_interval)
+    return False
+
+
+def wait_until_map_window_closed(timeout=5, poll_interval=0.3):
+    start = time.time()
+    while time.time() - start < timeout:
+        if not _is_map_window_open():
+            return True
+        wait(poll_interval)
+    return False
+
+
+def open_map_window():
+    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+    if wait_until_map_window_open():
+        log("[MAP] Map window open")
+        return True
+    log("[MAP] Map window open timeout")
+    return False
+
+
+def close_map_window():
+    if not Path(CLOSE_X_TEMPLATE).is_file():
+        log(f"[MAP] Close X template missing: {CLOSE_X_TEMPLATE}")
+        return False
+
+    screen = get_screen()
+    close_match = find_template(
+        screen,
+        CLOSE_X_TEMPLATE,
+        threshold=_MAP_WINDOW_THRESHOLD,
+    )
+    if not close_match:
+        log("[MAP] Close X button not found")
+        return False
+
+    tap(close_match["center_x"], close_match["center_y"])
+
+    if wait_until_map_window_closed():
+        log("[MAP] Map window closed")
+        return True
+
+    log("[MAP] Map window close timeout")
+    return False
+
+
 def wait_until_map_loaded(map_def, timeout=None, poll_interval=0.5):
     navigation = map_def.get("navigation", {})
     current_template = navigation.get("current_map_template")
@@ -445,8 +512,8 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
     log(f"{log_prefix} Cleaning UI before navigation")
     clean_game_ui(device_id)
 
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(2)
+    if not open_map_window():
+        return False, map_def
 
     if not _enter_map_by_behavior(map_def, log_prefix):
         return False, map_def
@@ -459,19 +526,16 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
 
 def tap_visual_location(x, y, device_id, log_prefix="[NAVIGATION]", label="location"):
     bind_adb_device(device_id)
-    log(f"{log_prefix} Opening map inside target map")
 
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(2)
+    if not open_map_window():
+        log(f"{log_prefix} Failed to open map window")
+        return
 
     log(f"{log_prefix} Clicking {label} at {x},{y}")
-
     tap(x, y)
 
-    log(f"{log_prefix} Closing map")
-
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    wait(1)
+    if not close_map_window():
+        log(f"{log_prefix} Failed to close map window")
 
     wait_until_navigation_complete()
 
