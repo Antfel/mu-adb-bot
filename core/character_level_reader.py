@@ -6,6 +6,7 @@ import numpy as np
 
 from core.device_manager import get_device_screenshot
 from core.logger import log
+from core.path_utils import get_app_root, resource_path
 from core.vision import decode_image_bytes, find_template
 
 try:
@@ -14,9 +15,10 @@ except ImportError:
     pytesseract = None
 
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LEVEL_REGION_TEMPLATE = _PROJECT_ROOT / "templates/ui/common/level_region_reference.png"
-DEBUG_DIR = _PROJECT_ROOT / "debug"
+LEVEL_REGION_TEMPLATE = Path(
+    resource_path("templates/ui/common/level_region_reference.png")
+)
+DEBUG_DIR = get_app_root() / "debug"
 
 USE_FIXED_LEVEL_REGION = True
 

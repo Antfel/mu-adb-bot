@@ -1,0 +1,16 @@
+{
+  "id": "devias",
+  "name": "Devias",
+  "group": "Devias",
+  "submap": 1,
+  "requirements": {
+    "min_level": 20
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Devias/maintenance/devias_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 5,
+  "wire": 3
+}

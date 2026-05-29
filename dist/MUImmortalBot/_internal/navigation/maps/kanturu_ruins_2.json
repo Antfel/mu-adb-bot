@@ -1,0 +1,16 @@
+{
+  "id": "kanturu_ruins_2",
+  "name": "Kanturu Ruins 2",
+  "group": "Kanturu Ruins",
+  "submap": 2,
+  "requirements": {
+    "min_level": 200
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Kanturu_ruins/maintenance/kanturu_ruins_2_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 12,
+  "wire": 3
+}

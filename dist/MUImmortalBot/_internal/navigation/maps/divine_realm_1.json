@@ -1,0 +1,29 @@
+{
+  "id": "divine_realm_1",
+  "name": "Divine Realm 1",
+  "group": "Divine Realm",
+  "submap": 1,
+  "requirements": {
+    "min_level": 300
+  },
+  "navigation": {
+    "behavior": "direct_teleport",
+    "current_map_template": "templates/maps/Divine_realm/current/divine_realm_1_current.png",
+    "map_option_template": "templates/maps/Divine_realm/mapsui/divine_realm_1.png",
+    "enter_wait": 8,
+    "map_list_swipe": {
+      "x1": 530,
+      "y1": 708,
+      "x2": 530,
+      "y2": 600,
+      "duration": 250
+    }
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Divine_realm/maintenance/divine_realm_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 15,
+  "wire": 1
+}

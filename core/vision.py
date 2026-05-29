@@ -1,7 +1,16 @@
+import os
+
 import cv2
 import numpy as np
 
 from core.logger import log
+from core.path_utils import resource_path
+
+
+def _resolve_template_path(template_path):
+    if os.path.isabs(template_path):
+        return template_path
+    return resource_path(template_path)
 
 
 def decode_image_bytes(image_bytes):
@@ -24,6 +33,7 @@ def find_template(screen, template_path, threshold=0.85, region=None):
     if screen is None:
         raise RuntimeError("[VISION] Empty screen from screenshot")
 
+    template_path = _resolve_template_path(template_path)
     template = cv2.imread(template_path)
 
     if template is None:

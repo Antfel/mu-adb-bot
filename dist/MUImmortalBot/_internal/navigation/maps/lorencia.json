@@ -1,0 +1,16 @@
+{
+  "id": "lorencia",
+  "name": "Lorencia",
+  "group": "Lorencia",
+  "submap": 1,
+  "requirements": {
+    "min_level": 1
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Lorencia/maintenance/lorencia_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 2,
+  "wire": 1
+}

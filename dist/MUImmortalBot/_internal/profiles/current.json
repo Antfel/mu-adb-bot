@@ -1,0 +1,12 @@
+{
+    "active_farm_spot": "temple_of_kalima_1_spot_1",
+    "hp_potion_stacks": 10,
+    "mp_potion_stacks": 10,
+    "enable_potion_recovery": true,
+    "enable_death_recovery": true,
+    "enable_auto_attack": true,
+    "map": "temple_of_kalima_1",
+    "wire": 2,
+    "spot": "spot_1",
+    "character_level": 383
+}

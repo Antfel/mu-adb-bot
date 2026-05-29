@@ -2,14 +2,14 @@ import json
 from pathlib import Path
 
 from core.logger import log
+from core.path_utils import resource_path
 
 
 _CACHE = None
 
 
 def _definitions_dir():
-    # repo_root/navigation/maps
-    return Path(__file__).resolve().parent.parent / "navigation" / "maps"
+    return Path(resource_path("navigation/maps"))
 
 
 def _normalize_map_definition(raw):

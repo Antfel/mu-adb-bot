@@ -1,0 +1,16 @@
+{
+  "id": "raklion_2",
+  "name": "Raklion 2",
+  "group": "Raklion",
+  "submap": 2,
+  "requirements": {
+    "min_level": 300
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Raklion/maintenance/raklion_2_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 14,
+  "wire": 6
+}

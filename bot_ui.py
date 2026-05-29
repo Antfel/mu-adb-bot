@@ -1,10 +1,12 @@
 import io
+import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
+from core.path_utils import ensure_runtime_data
 from core.profile import list_profiles, load_profile, save_profile, set_current_profile
 from core.character_level import read_character_level
 from core.level_validation import parse_character_level, validate_level_for_profile
@@ -12,7 +14,7 @@ import core.session_state as session_state
 from core.session_state import configure_session, reset_session
 from core.logger import log
 from core.adb import get_device, set_device
-from core.device_manager import get_device_screenshot, list_adb_devices
+from core.device_manager import get_device_screenshot, list_adb_devices, restart_adb
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.window_utils import center_window
 from core.actions import wait
@@ -414,8 +416,10 @@ def navigate_with_retry():
 def _profile_path(profile_name):
     if not profile_name:
         return None
+    from core.path_utils import data_file_path
+
     name = profile_name if profile_name.endswith(".json") else f"{profile_name}.json"
-    return f"profiles/{name}"
+    return data_file_path(f"profiles/{name}")
 
 
 def _load_level_from_profile(profile_name=None):
@@ -839,6 +843,11 @@ def schedule_preview_refresh():
     preview_refresh_job = root.after(2000, schedule_preview_refresh)
 
 
+def restart_adb_devices():
+    restart_adb()
+    refresh_devices()
+
+
 def refresh_devices():
     devices = list_adb_devices()
     device_select["values"] = devices
@@ -955,11 +964,22 @@ def _build_ui():
     device_var = tk.StringVar()
     device_select = _labeled_combo(device_body, "Dispositivo", 0, device_var)
 
+    device_btn_row = tk.Frame(device_body, bg=COLORS["panel"])
+    device_btn_row.grid(row=2, column=0, sticky="ew", pady=(0, PAD["row"]))
+    device_btn_row.grid_columnconfigure(0, weight=1)
+    device_btn_row.grid_columnconfigure(1, weight=0)
+
     _light_button(
-        device_body,
+        device_btn_row,
         "↻  Refrescar dispositivos",
         refresh_devices,
-    ).grid(row=2, column=0, sticky="ew", pady=(0, PAD["row"]))
+    ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+    _light_button(
+        device_btn_row,
+        "Reiniciar ADB",
+        restart_adb_devices,
+    ).grid(row=0, column=1, sticky="e")
 
     profiles = list_profiles()
     profile_var = tk.StringVar()
@@ -1115,6 +1135,7 @@ def _build_ui():
     _load_level_from_profile()
 
 
+ensure_runtime_data()
 _build_ui()
 set_bot_status("idle")
 refresh_devices()

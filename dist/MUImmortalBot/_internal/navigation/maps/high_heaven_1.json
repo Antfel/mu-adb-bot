@@ -1,0 +1,16 @@
+{
+  "id": "high_heaven_1",
+  "name": "High Heaven 1",
+  "group": "High Heaven",
+  "submap": 1,
+  "requirements": {
+    "min_level": 300
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/High_heaven/maintenance/high_heaven_1_map_open_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 16,
+  "wire": 1
+}

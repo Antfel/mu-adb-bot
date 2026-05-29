@@ -3,9 +3,10 @@ import re
 from pathlib import Path
 
 from core.logger import log
+from core.path_utils import data_file_path
 
 
-_LOCATIONS_PATH = Path(__file__).resolve().parent.parent / "special_locations" / "user_locations.json"
+_LOCATIONS_PATH = Path(data_file_path("special_locations/user_locations.json"))
 _ACTIVE_SINGLE_TYPES = ("farm_spot", "elf_buff")
 
 

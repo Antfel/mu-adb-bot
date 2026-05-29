@@ -4,6 +4,7 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 
 from core.logger import log
+from core.path_utils import resource_path
 from core.window_utils import center_window
 from core.navigation_config import load_all_map_definitions, load_map_definition
 from core.special_locations import (
@@ -260,7 +261,7 @@ def open_location_selector(location_type, profile_name):
         state["image_height"] = _safe_int(maintenance.get("image_height"), 1440)
 
         try:
-            image = Image.open(image_path)
+            image = Image.open(resource_path(image_path))
         except Exception as e:
             message_label.config(text="No se pudo cargar imagen de mantenimiento")
             log(f"[LOCATIONS] Failed to load image {image_path}: {e}")
