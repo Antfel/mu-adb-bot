@@ -1,8 +1,38 @@
 # MU Immortal Bot — Runtime distribution
 
-Packaged desktop app built with PyInstaller (`--onedir`). End users do not need Python installed.
+Packaged desktop app built with PyInstaller (`--onedir`, entry point `bot_ui.py`). End users do not need Python installed.
 
-**Important:** builds are **not cross-compiled**. Generate the macOS build on macOS and the Windows build on Windows.
+**Important:** builds are **not cross-compiled**. macOS artifacts are built on `macos-latest`, Windows artifacts on `windows-latest`.
+
+---
+
+## Download from GitHub Actions (recommended)
+
+Automated builds run on **push to `main`** and on **manual workflow dispatch**.
+
+### Steps
+
+1. Open the repository on GitHub → **Actions**.
+2. Select workflow **Build MU Immortal Bot**.
+3. Open the latest successful run.
+4. Scroll to **Artifacts** at the bottom.
+5. Download:
+   - **MUImmortalBot-Windows** — full `dist/MUImmortalBot/` folder (zipped)
+   - **MUImmortalBot-macOS** — full `dist/MUImmortalBot/` folder (zipped)
+
+Artifacts are kept **30 days**.
+
+### After download
+
+**Windows:** unzip and run `MUImmortalBot.exe` inside the folder (keep all files together).
+
+**macOS:** unzip and run `./MUImmortalBot` (if blocked: right-click → Open).
+
+### Before running the bot
+
+1. Start your **Android emulator** (BlueStacks, etc.) and open **MU Immortal**.
+2. Verify ADB sees the device (see platform setup below).
+3. Install **Tesseract** if you want automatic level OCR (optional; manual level still works).
 
 ---
 
@@ -19,13 +49,13 @@ User-edited profiles and locations are stored beside the executable after first 
 
 ---
 
-## Build (developers)
+## Build locally (developers)
 
-### Prerequisites (both platforms)
+### Prerequisites
 
 ```bash
 python -m venv venv
-# macOS / Linux:
+# macOS:
 source venv/bin/activate
 # Windows:
 venv\Scripts\activate.bat
@@ -34,173 +64,135 @@ pip install -r requirements.txt
 pip install pyinstaller
 ```
 
-Shared spec file: `MUImmortalBot.spec` (entry point: `bot_ui.py`).
+Shared spec: `MUImmortalBot.spec` (`--onedir`, name `MUImmortalBot`).
 
-### macOS build
-
-Run **on macOS only**:
+### macOS (on Mac only)
 
 ```bash
 chmod +x scripts/build_mac.sh
 ./scripts/build_mac.sh
 ```
 
-Output:
+Output: `dist/MUImmortalBot/MUImmortalBot`
 
-```text
-dist/MUImmortalBot/MUImmortalBot
-```
-
-### Windows build
-
-Run **on Windows only**:
+### Windows (on Windows only)
 
 ```bat
 scripts\build_windows.bat
 ```
 
-Output:
+Output: `dist\MUImmortalBot\MUImmortalBot.exe`
 
-```text
-dist\MUImmortalBot\MUImmortalBot.exe
-```
+### CI workflow
 
-Distribute the entire folder `dist/MUImmortalBot/` (not only the `.exe`).
+See `.github/workflows/build.yml` — same scripts, Python **3.13**.
 
 ---
 
 ## macOS — End user setup
 
-### 1. Emulator
+### Emulator
 
-Install BlueStacks (or another Android emulator) and run MU Immortal.
+Install BlueStacks (or another Android emulator) and run MU Immortal **before** starting the bot.
 
-### 2. ADB
-
-`adb` must be available in your shell PATH.
-
-```bash
-adb devices
-```
-
-You should see the emulator listed as `device`.
-
-Install Android platform-tools if needed:
+### ADB
 
 ```bash
 brew install --cask android-platform-tools
+adb devices
 ```
 
-### 3. Tesseract OCR (automatic level read)
+The emulator must appear as `device`.
+
+### Tesseract OCR (optional)
 
 ```bash
 brew install tesseract
 tesseract --version
 ```
 
-### 4. Run the app
+### Run
 
 ```bash
-./dist/MUImmortalBot/MUImmortalBot
+./MUImmortalBot/MUImmortalBot
 ```
 
-If macOS blocks the app (unsigned): **right-click → Open**.
-
-### 5. Basic usage
-
-1. Open emulator and game.
-2. Confirm `adb devices`.
-3. Open **MU Immortal Bot**.
-4. Select **Device** and **Profile**.
-5. Set **Nivel PJ** (or let OCR detect it).
-6. Click **Iniciar Bot** and answer the spot confirmation dialog.
-
-### Writable data (macOS)
+### Writable data
 
 Next to the executable:
 
-- `dist/MUImmortalBot/profiles/`
-- `dist/MUImmortalBot/special_locations/`
-- `dist/MUImmortalBot/debug/` (OCR debug crops)
+- `profiles/`
+- `special_locations/`
+- `debug/` (OCR debug crops)
 
 ---
 
 ## Windows — End user setup
 
-### 1. Emulator
+### Emulator
 
-Install BlueStacks (or another Android emulator) and run MU Immortal.
+Install BlueStacks (or another Android emulator) and run MU Immortal **before** starting the bot.
 
-### 2. ADB
+### ADB
 
-`adb.exe` must be on **PATH**, or place Android SDK **platform-tools** on PATH.
-
-Example (PowerShell, session only):
+Install [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) and add the folder to **PATH** (must contain `adb.exe`).
 
 ```powershell
-$env:Path += ";C:\platform-tools"
 adb devices
 ```
 
-Download platform-tools: [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)
+The emulator must appear as `device`.
 
-Verify the emulator appears as `device`.
+### Tesseract OCR (optional)
 
-### 3. Tesseract OCR (automatic level read)
+1. Installer: https://github.com/UB-Mannheim/tesseract/wiki  
+2. Add to PATH, e.g. `C:\Program Files\Tesseract-OCR`  
+3. Verify: `tesseract --version`
 
-1. Download the Windows installer (UB Mannheim build):  
-   https://github.com/UB-Mannheim/tesseract/wiki
-2. Install Tesseract (default path is fine).
-3. Add the install folder to **PATH**, e.g.  
-   `C:\Program Files\Tesseract-OCR`
-4. Verify in a new terminal:
+### Run
 
 ```bat
-tesseract --version
+MUImmortalBot\MUImmortalBot.exe
 ```
 
-If OCR fails, the app still works with manual **Nivel PJ** from the profile/UI.
+Keep the entire `MUImmortalBot` folder intact when copying to another PC.
 
-### 4. Run the app
-
-```bat
-dist\MUImmortalBot\MUImmortalBot.exe
-```
-
-Keep all files inside `dist\MUImmortalBot\` together when copying to another PC.
-
-### 5. Basic usage
-
-Same flow as macOS: device → profile → level → **Iniciar Bot** → spot dialog.
-
-### Writable data (Windows)
+### Writable data
 
 Next to `MUImmortalBot.exe`:
 
-- `dist\MUImmortalBot\profiles\`
-- `dist\MUImmortalBot\special_locations\`
-- `dist\MUImmortalBot\debug\`
+- `profiles\`
+- `special_locations\`
+- `debug\`
+
+---
+
+## Basic usage
+
+1. Open emulator and game.
+2. Confirm `adb devices`.
+3. Open **MU Immortal Bot**.
+4. Select **Device** and **Profile**.
+5. Set **Nivel PJ** (or use OCR).
+6. Click **Iniciar Bot** and answer the spot confirmation.
+
+Use **Refrescar dispositivos** or **Reiniciar ADB** in the UI if the device list is empty.
 
 ---
 
 ## OCR troubleshooting
 
-If level detection is wrong, inspect (after a failed or debug run):
+If level detection fails, check:
 
 - `debug/level_crop_raw.png`
 - `debug/level_crop_processed.png`
 
-Set `DEBUG_LEVEL_OCR = True` in `core/character_level_reader.py` before rebuilding to always save crops.
+Set `DEBUG_LEVEL_OCR = True` in `core/character_level_reader.py` before rebuilding.
 
 ---
 
-## Runtime Python dependencies (build machine)
+## Runtime dependencies (bundled vs system)
 
-See `requirements_runtime.txt`:
+**Bundled:** opencv-python, Pillow, numpy, pytesseract (see `requirements_runtime.txt`).
 
-- opencv-python
-- Pillow
-- numpy
-- pytesseract
-
-System tools (not bundled): **adb**, **tesseract**.
+**Not bundled (install on host):** `adb`, `tesseract`.

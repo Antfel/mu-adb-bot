@@ -8,19 +8,16 @@ echo "[BUILD] Platform: macOS"
 echo "[BUILD] Cleaning previous artifacts..."
 rm -rf build dist
 
-if [[ ! -d "venv" ]]; then
-  echo "[BUILD] venv not found. Create it first:"
-  echo "  python3 -m venv venv"
-  echo "  source venv/bin/activate"
-  echo "  pip install -r requirements.txt"
-  exit 1
+if [[ -d "venv" ]]; then
+  # shellcheck disable=SC1091
+  source venv/bin/activate
+  echo "[BUILD] Using local venv"
+else
+  echo "[BUILD] Using system Python (CI or no venv)"
 fi
 
-# shellcheck disable=SC1091
-source venv/bin/activate
-
 echo "[BUILD] Installing build dependencies..."
-pip install -q pyinstaller
+python -m pip install -q pyinstaller
 
 echo "[BUILD] Compiling Python sources..."
 python -m py_compile \
@@ -30,7 +27,8 @@ python -m py_compile \
   core/profile.py \
   core/navigation_config.py \
   core/special_locations.py \
-  core/character_level_reader.py
+  core/character_level_reader.py \
+  core/device_manager.py
 
 echo "[BUILD] Running PyInstaller (--onedir)..."
 pyinstaller MUImmortalBot.spec --noconfirm --clean
