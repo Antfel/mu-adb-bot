@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 from core.logger import log
+from core.subprocess_utils import hidden_console_kwargs
 
 
 DEVICE_ID = None
@@ -30,11 +31,14 @@ def run_adb(args, capture_output=True):
         raise RuntimeError("[ADB] No device selected")
 
     command = ["adb", "-s", DEVICE_ID] + args
+    console = hidden_console_kwargs()
 
     result = subprocess.run(
         command,
         capture_output=capture_output,
-        text=False
+        text=False,
+        startupinfo=console["startupinfo"],
+        creationflags=console["creationflags"],
     )
 
     if result.returncode != 0:

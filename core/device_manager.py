@@ -1,17 +1,21 @@
 import subprocess
 
 from core.logger import log
+from core.subprocess_utils import hidden_console_kwargs
 
 _adb_server_ready = False
 
 
 def _run_adb(args, *, check=False, binary=False):
+    console = hidden_console_kwargs()
     try:
         return subprocess.run(
             ["adb", *args],
             capture_output=True,
             text=not binary,
             check=check,
+            startupinfo=console["startupinfo"],
+            creationflags=console["creationflags"],
         )
     except OSError:
         return None
