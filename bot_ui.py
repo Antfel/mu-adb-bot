@@ -1,11 +1,15 @@
 import io
 import threading
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
-from core.profile import list_profiles, set_current_profile
+from core.profile import list_profiles, load_profile, save_profile, set_current_profile
+from core.character_level import read_character_level
+from core.level_validation import parse_character_level, validate_level_for_profile
+import core.session_state as session_state
+from core.session_state import configure_session, reset_session
 from core.logger import log
 from core.adb import get_device, set_device
 from core.device_manager import get_device_screenshot, list_adb_devices
@@ -95,6 +99,7 @@ device_var = None
 profile_var = None
 device_select = None
 profile_select = None
+level_var = None
 toggle_button = None
 preview_label = None
 traffic_canvas = None
@@ -102,6 +107,8 @@ status_text_label = None
 runtime_status_value = None
 runtime_device_value = None
 runtime_profile_value = None
+runtime_level_value = None
+runtime_elf_buff_value = None
 last_event_label = None
 
 
@@ -330,6 +337,8 @@ def _handle_startup_failure():
     cancel_preview_refresh()
 
     def _reset_ui():
+        reset_session()
+        refresh_runtime_status()
         _apply_toggle_stopped()
         set_bot_status("error")
 
@@ -360,12 +369,13 @@ def run_startup_sequence(device_id, already_at_spot):
             return False
 
     navigated_via_elf = False
-    if not has_elf_buff():
-        add_log("[MAIN] Elf buff no activo. Buscando buff")
-        if not go_to_elf_buff_and_return(device_id):
-            log("[MAIN] Falló búsqueda de elf buff")
-            return False
-        navigated_via_elf = True
+    if session_state.session_elf_buff_enabled:
+        if not has_elf_buff():
+            add_log("[MAIN] Elf buff no activo. Buscando buff")
+            if not go_to_elf_buff_and_return(device_id):
+                log("[MAIN] Falló búsqueda de elf buff")
+                return False
+            navigated_via_elf = True
 
     need_navigation = not already_at_spot and not navigated_via_elf
     if need_navigation:
@@ -401,11 +411,142 @@ def navigate_with_retry():
     return False
 
 
+def _profile_path(profile_name):
+    if not profile_name:
+        return None
+    name = profile_name if profile_name.endswith(".json") else f"{profile_name}.json"
+    return f"profiles/{name}"
+
+
+def _load_level_from_profile(profile_name=None):
+    profile_name = profile_name or profile_var.get()
+    path = _profile_path(profile_name)
+    if not path:
+        level_var.set("")
+        return
+
+    try:
+        profile_data = load_profile(path)
+        level = profile_data.get("character_level")
+        level_var.set(str(level) if level is not None else "")
+    except (OSError, ValueError, TypeError):
+        level_var.set("")
+
+
+def _save_character_level_to_profile(profile_name, character_level):
+    path = _profile_path(profile_name)
+    if not path:
+        return
+
+    profile_data = load_profile(path)
+    profile_data["character_level"] = character_level
+    save_profile(profile_data, path)
+
+
+def _apply_character_level_ui(level):
+    """Update level field and runtime label; safe from worker threads."""
+
+    def _apply():
+        level_var.set(str(level))
+        if runtime_level_value is not None:
+            runtime_level_value.config(text=str(level))
+        session_state.session_character_level = level
+
+    if root is None:
+        return
+
+    if threading.current_thread() is threading.main_thread():
+        _apply()
+    else:
+        root.after(0, _apply)
+
+
+def _resolve_character_level(selected_device):
+    auto_level = read_character_level(selected_device)
+    if auto_level is not None:
+        _apply_character_level_ui(auto_level)
+        refresh_runtime_status()
+        log("[LEVEL] Using OCR level (priority over manual)")
+        return auto_level
+
+    manual_level = parse_character_level(level_var.get())
+    if manual_level is not None:
+        log("[LEVEL] OCR failed, using manual level fallback")
+        return manual_level
+
+    log("[LEVEL] OCR failed, no manual level configured")
+    return None
+
+
+def _validate_and_prepare_session(profile_name, selected_device):
+    reset_session()
+
+    character_level = _resolve_character_level(selected_device)
+    if character_level is None:
+        messagebox.showerror(
+            "Nivel del personaje",
+            "Debes configurar el nivel del personaje antes de iniciar el bot.",
+        )
+        return False
+
+    _save_character_level_to_profile(profile_name, character_level)
+
+    try:
+        validation = validate_level_for_profile(profile_name, character_level)
+    except FileNotFoundError as exc:
+        messagebox.showerror("Mapa no encontrado", str(exc))
+        log(f"[LEVEL] {exc}")
+        return False
+
+    if not validation.can_start:
+        messagebox.showerror("Nivel insuficiente", validation.farm_blocked_message)
+        return False
+
+    if validation.show_elf_warning:
+        messagebox.showwarning(
+            "Elf Buff",
+            "Se desactiva el uso de buscar Elf Buff, debido a que el personaje "
+            "no puede ingresar a dicho mapa",
+        )
+
+    configure_session(
+        character_level,
+        validation.elf_buff_enabled,
+        validation.elf_buff_status,
+    )
+    refresh_runtime_status()
+    return True
+
+
 def refresh_runtime_status():
     device = device_var.get().strip() or "-"
     profile = profile_var.get().strip() or "-"
     runtime_device_value.config(text=device)
     runtime_profile_value.config(text=profile)
+
+    session_level = session_state.session_character_level
+    if session_level is not None:
+        runtime_level_value.config(text=str(session_level))
+    else:
+        parsed = parse_character_level(level_var.get())
+        runtime_level_value.config(text=str(parsed) if parsed is not None else "-")
+
+    if session_level is not None:
+        elf_status = session_state.session_elf_buff_status
+    else:
+        profile_name = profile_var.get()
+        preview_level = parse_character_level(level_var.get())
+        if profile_name and preview_level is not None:
+            try:
+                preview = validate_level_for_profile(profile_name, preview_level)
+                elf_status = preview.elf_buff_status
+            except FileNotFoundError:
+                elf_status = "-"
+        else:
+            elf_status = "No configurado"
+
+    runtime_elf_buff_value.config(text=elf_status)
+
     color, text = STATUS_CONFIG.get(_current_bot_status, STATUS_CONFIG["idle"])
     runtime_status_value.config(text=text, fg=color)
 
@@ -452,7 +593,7 @@ def bot_loop():
                     log("[MAIN] Compra de pociones falló")
                     set_bot_status("error")
 
-            elif not has_elf_buff():
+            elif session_state.session_elf_buff_enabled and not has_elf_buff():
                 set_bot_status("working")
                 add_log("[MAIN] Elf buff no activo. Buscando buff")
                 device_id = _active_device_id()
@@ -554,6 +695,13 @@ def _begin_bot(already_at_spot):
     set_device(selected_device)
     log(f"[DEVICE] Usando dispositivo: {selected_device}")
 
+    if not selected_profile:
+        messagebox.showerror("Perfil", "Seleccione un perfil antes de iniciar el bot.")
+        return
+
+    if not _validate_and_prepare_session(selected_profile, selected_device):
+        return
+
     bot_running = True
     _apply_toggle_running()
     add_log("[BOT] Iniciado")
@@ -595,6 +743,8 @@ def stop_bot():
     cancel_preview_refresh()
 
     _apply_toggle_stopped()
+    reset_session()
+    refresh_runtime_status()
     set_bot_status("idle")
     add_log("[BOT] Detenido")
 
@@ -710,6 +860,19 @@ def refresh_devices():
 
 
 def _on_profile_selected(_event=None):
+    _load_level_from_profile()
+    refresh_runtime_status()
+
+
+def _on_level_changed(_event=None):
+    if bot_running:
+        return
+
+    profile_name = profile_var.get()
+    character_level = parse_character_level(level_var.get())
+    if profile_name and character_level is not None:
+        _save_character_level_to_profile(profile_name, character_level)
+    session_state.session_character_level = None
     refresh_runtime_status()
 
 
@@ -720,8 +883,9 @@ def _on_device_selected(_event=None):
 
 def _build_ui():
     global root, device_var, profile_var, device_select, profile_select
-    global toggle_button, preview_label, traffic_canvas, status_text_label
-    global runtime_status_value, runtime_device_value, runtime_profile_value, last_event_label
+    global level_var, toggle_button, preview_label, traffic_canvas, status_text_label
+    global runtime_status_value, runtime_device_value, runtime_profile_value
+    global runtime_level_value, runtime_elf_buff_value, last_event_label
 
     root = tk.Tk()
     root.title("MU Immortal Bot")
@@ -800,12 +964,32 @@ def _build_ui():
     profiles = list_profiles()
     profile_var = tk.StringVar()
     profile_select = _labeled_combo(device_body, "Perfil", 3, profile_var, values=profiles)
-    profile_select.grid_configure(pady=(0, 10))
+    profile_select.grid_configure(pady=(0, PAD["row"]))
     if profiles:
         profile_select.current(0)
 
+    _label(device_body, "Nivel PJ", fg=COLORS["muted"]).grid(
+        row=5, column=0, sticky="w", pady=(0, 3)
+    )
+    level_var = tk.StringVar()
+    level_entry = tk.Entry(
+        device_body,
+        textvariable=level_var,
+        width=12,
+        bg=COLORS["input"],
+        fg=COLORS["text"],
+        insertbackground=COLORS["text"],
+        relief="flat",
+        highlightthickness=1,
+        highlightbackground=COLORS["border"],
+        highlightcolor=COLORS["accent_blue"],
+    )
+    level_entry.grid(row=6, column=0, sticky="w", pady=(0, 10))
+    level_entry.bind("<FocusOut>", _on_level_changed)
+    level_entry.bind("<Return>", _on_level_changed)
+
     bot_actions = tk.Frame(device_body, bg=COLORS["panel"])
-    bot_actions.grid(row=5, column=0, sticky="ew")
+    bot_actions.grid(row=7, column=0, sticky="ew")
     bot_actions.grid_columnconfigure(0, weight=1)
 
     toggle_button = _bot_action_button(
@@ -867,9 +1051,11 @@ def _build_ui():
     runtime_status_value = _runtime_row(runtime_body, "●", "Estado", 0)
     runtime_device_value = _runtime_row(runtime_body, "🖥", "Dispositivo", 1)
     runtime_profile_value = _runtime_row(runtime_body, "👤", "Perfil", 2)
+    runtime_level_value = _runtime_row(runtime_body, "⬆", "Nivel PJ", 3)
+    runtime_elf_buff_value = _runtime_row(runtime_body, "🍃", "Elf Buff", 4)
 
     event_frame = tk.Frame(runtime_body, bg=COLORS["panel"])
-    event_frame.grid(row=3, column=0, sticky="ew", pady=4)
+    event_frame.grid(row=5, column=0, sticky="ew", pady=4)
     _label(event_frame, "🕐", font=FONTS["icon"], width=2).grid(row=0, column=0, sticky="nw")
     _label(
         event_frame,
@@ -926,6 +1112,7 @@ def _build_ui():
 
     device_select.bind("<<ComboboxSelected>>", _on_device_selected)
     profile_select.bind("<<ComboboxSelected>>", _on_profile_selected)
+    _load_level_from_profile()
 
 
 _build_ui()

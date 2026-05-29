@@ -7,5 +7,6 @@
     "enable_auto_attack": true,
     "map": "temple_of_kalima_1",
     "wire": 2,
-    "spot": "spot_1"
+    "spot": "spot_1",
+    "character_level": 383
 }

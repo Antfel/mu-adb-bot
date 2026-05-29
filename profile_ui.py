@@ -14,7 +14,7 @@ from core.profile import (
 root = tk.Toplevel()
 
 root.title("Profile Manager")
-center_window(root, 400, 580)
+center_window(root, 400, 620)
 
 
 # profiles
@@ -110,6 +110,7 @@ def load_selected_profile(event=None):
 
     hp_var.set(profile_data["hp_potion_stacks"])
     mp_var.set(profile_data["mp_potion_stacks"])
+    level_var.set(profile_data.get("character_level", ""))
 
     potion_var.set(profile_data["enable_potion_recovery"])
     death_var.set(profile_data["enable_death_recovery"])
@@ -132,6 +133,12 @@ tk.Label(root, text="MP Potion Stacks").pack()
 mp_var = tk.IntVar()
 mp_input = tk.Entry(root, textvariable=mp_var)
 mp_input.pack()
+
+# character level
+tk.Label(root, text="Nivel del personaje").pack()
+level_var = tk.StringVar()
+level_input = tk.Entry(root, textvariable=level_var, width=10)
+level_input.pack(pady=(0, 10))
 
 
 # checkboxes
@@ -163,6 +170,15 @@ def save_current_profile():
 
     profile_data["hp_potion_stacks"] = hp_var.get()
     profile_data["mp_potion_stacks"] = mp_var.get()
+
+    level_text = level_var.get().strip()
+    if level_text:
+        try:
+            profile_data["character_level"] = int(level_text)
+        except ValueError:
+            log("[PROFILE] Nivel del personaje inválido, no se guardó")
+    elif "character_level" in profile_data:
+        del profile_data["character_level"]
 
     profile_data["enable_potion_recovery"] = potion_var.get()
     profile_data["enable_death_recovery"] = death_var.get()
