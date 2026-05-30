@@ -11,7 +11,7 @@ from core.profile import list_profiles, load_profile, save_profile, set_current_
 from core.character_level import read_character_level
 from core.level_validation import parse_character_level, validate_level_for_profile
 import core.session_state as session_state
-from core.session_state import configure_session, reset_session
+from core.session_state import configure_session, reset_session, set_current_bot_state
 from core.logger import log
 from core.adb import get_device, set_device
 from core.device_manager import get_device_screenshot, list_adb_devices, restart_adb
@@ -355,7 +355,14 @@ def run_startup_sequence(device_id, already_at_spot):
     global startup_already_at_spot
 
     startup_already_at_spot = already_at_spot
-    set_bot_status("working")
+
+    if already_at_spot:
+        set_current_bot_state("FARMING")
+        set_bot_status("farming")
+        log("[STARTUP] User confirmed already at spot; state set to FARMING")
+    else:
+        set_bot_status("working")
+
     add_log("[BOT] Secuencia de inicio")
 
     if is_dead():
@@ -555,9 +562,20 @@ def refresh_runtime_status():
     runtime_status_value.config(text=text, fg=color)
 
 
+def _sync_session_bot_state(ui_state):
+    mapping = {
+        "idle": "IDLE",
+        "working": "NAVIGATING",
+        "farming": "FARMING",
+        "error": "ERROR",
+    }
+    set_current_bot_state(mapping.get(ui_state, "IDLE"))
+
+
 def set_bot_status(state):
     global _current_bot_status
     _current_bot_status = state
+    _sync_session_bot_state(state)
 
     def _apply():
         color, text = STATUS_CONFIG.get(state, STATUS_CONFIG["idle"])

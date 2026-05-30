@@ -162,34 +162,174 @@ from core.vision import find_template
 from core.screen import get_screen
 
 
-def teleport_to_potion_store():
+SHOP_OPEN_TEMPLATE = "templates/ui/common/shop_open.png"
+POTION_CLUE_POPUP_TEMPLATE = "templates/ui/potion_clue_popup.png"
+POTION_TELEPORT_BUTTON_TEMPLATE = "templates/ui/potion_teleport_button.png"
+SHOP_OPEN_THRESHOLD = 0.50
+TELEPORT_POPUP_THRESHOLD = 0.8
+SHOP_CANDIDATE_LOG_THRESHOLD = 0.50
+
+
+def _shop_open_search_region(screen):
+    screen_h, screen_w = screen.shape[:2]
+    half_w = screen_w // 2
+    return {
+        "x": half_w,
+        "y": 0,
+        "width": screen_w - half_w,
+        "height": screen_h,
+    }
+
+
+def tap_empty_potion_slot():
     hp_empty = is_hp_potion_empty()
     mp_empty = is_mana_potion_empty()
 
     if hp_empty:
         log("[POTION] Tocando HP agotada")
-        tap_template("templates/ui/hp_potion_out.png", threshold=0.96)
+        return tap_template("templates/ui/hp_potion_out.png", threshold=0.96)
 
-    elif mp_empty:
+    if mp_empty:
         log("[POTION] Tocando Mana agotada")
-        tap_template("templates/ui/mana_potion_out.png", threshold=0.96)
+        return tap_template("templates/ui/mana_potion_out.png", threshold=0.96)
 
-    else:
-        log("[POTION] No hay pociones agotadas")
-        return False
+    log("[POTION] No hay pociones agotadas")
+    return False
 
-    wait(1)
 
+def is_shop_open():
+    screen = get_screen()
+    region = _shop_open_search_region(screen)
+    return (
+        find_template(
+            screen,
+            SHOP_OPEN_TEMPLATE,
+            threshold=SHOP_OPEN_THRESHOLD,
+            region=region,
+        )
+        is not None
+    )
+
+
+def _save_potion_entry_debug(screen, best_shop_match=None):
+    import cv2
+
+    from core.path_utils import get_app_root
+
+    debug_dir = get_app_root() / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    if screen is not None:
+        cv2.imwrite(str(debug_dir / "potion_entry_unknown.png"), screen)
+
+    if screen is None or best_shop_match is None:
+        return
+
+    x = best_shop_match["x"]
+    y = best_shop_match["y"]
+    w = best_shop_match["width"]
+    h = best_shop_match["height"]
+    screen_h, screen_w = screen.shape[:2]
+
+    pad = 20
+    x1 = max(0, x - pad)
+    y1 = max(0, y - pad)
+    x2 = min(screen_w, x + w + pad)
+    y2 = min(screen_h, y + h + pad)
+    crop = screen[y1:y2, x1:x2]
+
+    if crop.size > 0:
+        cv2.imwrite(str(debug_dir / "shop_open_check.png"), crop)
+
+
+def wait_for_shop_open(timeout=10, poll_interval=0.5):
+    import time
+
+    start = time.time()
+    while time.time() - start < timeout:
+        if is_shop_open():
+            return True
+        wait(poll_interval)
+
+    return False
+
+
+def wait_for_potion_entry_result(device_id=None, timeout=8, poll_interval=0.5):
+    import time
+
+    from core.vision import probe_template
+
+    _ = device_id
+    start = time.time()
+    max_teleport_conf = 0.0
+    max_shop_conf = 0.0
+    best_shop_match = None
+    last_screen = None
+
+    while time.time() - start < timeout:
+        screen = get_screen()
+        last_screen = screen
+
+        shop_region = _shop_open_search_region(screen)
+        teleport_conf, _ = probe_template(screen, POTION_CLUE_POPUP_TEMPLATE)
+        shop_conf, shop_match = probe_template(
+            screen, SHOP_OPEN_TEMPLATE, region=shop_region
+        )
+
+        max_teleport_conf = max(max_teleport_conf, teleport_conf)
+        if shop_conf >= max_shop_conf:
+            max_shop_conf = shop_conf
+            best_shop_match = shop_match
+
+        log(
+            f"[POTION] Poll confidence teleport_popup={teleport_conf:.3f} "
+            f"shop_open={shop_conf:.3f}"
+        )
+
+        if (
+            SHOP_CANDIDATE_LOG_THRESHOLD <= shop_conf < SHOP_OPEN_THRESHOLD
+        ):
+            log(
+                f"[POTION] Shop candidate detected but below threshold: "
+                f"{shop_conf:.3f}"
+            )
+
+        if teleport_conf >= TELEPORT_POPUP_THRESHOLD:
+            log(
+                f"[POTION] Teleport popup detected "
+                f"(confidence={teleport_conf:.3f})"
+            )
+            return "teleport_popup"
+
+        if shop_conf >= SHOP_OPEN_THRESHOLD:
+            log(
+                f"[POTION] Shop opened directly "
+                f"(confidence={shop_conf:.3f})"
+            )
+            return "shop_open"
+
+        wait(poll_interval)
+
+    log(
+        f"[POTION] Unable to determine potion entry flow "
+        f"(max teleport_popup={max_teleport_conf:.3f}, "
+        f"max shop_open={max_shop_conf:.3f})"
+    )
+    log(f"[POTION] Max shop_open confidence: {max_shop_conf:.3f}")
+    _save_potion_entry_debug(last_screen, best_shop_match)
+    return None
+
+
+def accept_potion_teleport_popup():
     if not is_potion_popup_open():
         log("[POTION] No apareció popup de teleport")
         return False
 
     screen = get_screen()
-
     teleport = find_template(
         screen,
-        "templates/ui/potion_teleport_button.png",
-        threshold=0.8
+        POTION_TELEPORT_BUTTON_TEMPLATE,
+        threshold=0.8,
     )
 
     if not teleport:
@@ -197,15 +337,30 @@ def teleport_to_potion_store():
         return False
 
     log("[POTION] Teleport a tienda")
-
-    tap_xy(
-        teleport["center_x"],
-        teleport["center_y"]
-    )
-
+    tap_xy(teleport["center_x"], teleport["center_y"])
     wait(5)
-
     return True
+
+
+def teleport_to_potion_store():
+    if not tap_empty_potion_slot():
+        return False
+
+    wait(1)
+    entry = wait_for_potion_entry_result()
+
+    if entry is None:
+        return False
+
+    if entry == "teleport_popup":
+        if not accept_potion_teleport_popup():
+            return False
+        return wait_for_shop_open(timeout=10)
+
+    if entry == "shop_open":
+        return True
+
+    return False
 
 
 from coordinates.gameplay import HP_POTION_PURCHASE, MP_POTION_PURCHASE

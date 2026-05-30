@@ -97,6 +97,61 @@ def find_template(screen, template_path, threshold=0.85, region=None):
     }
 
 
+def probe_template(screen, template_path, region=None):
+    """Return max confidence and match metadata without applying a threshold."""
+    if screen is None:
+        raise RuntimeError("[VISION] Empty screen from screenshot")
+
+    template_path = _resolve_template_path(template_path)
+    template = cv2.imread(template_path)
+
+    if template is None:
+        raise RuntimeError(f"[VISION] Failed to load template: {template_path}")
+
+    search_screen = screen
+    offset_x = 0
+    offset_y = 0
+    template_h, template_w = template.shape[:2]
+
+    if region is not None:
+        screen_h, screen_w = screen.shape[:2]
+        offset_x = max(0, min(int(region["x"]), screen_w))
+        offset_y = max(0, min(int(region["y"]), screen_h))
+        region_w = max(0, int(region["width"]))
+        region_h = max(0, int(region["height"]))
+        region_w = min(region_w, screen_w - offset_x)
+        region_h = min(region_h, screen_h - offset_y)
+
+        if region_w <= 0 or region_h <= 0:
+            return 0.0, None
+
+        search_screen = screen[offset_y : offset_y + region_h, offset_x : offset_x + region_w]
+
+    search_h, search_w = search_screen.shape[:2]
+    if search_h < template_h or search_w < template_w:
+        return 0.0, None
+
+    result = cv2.matchTemplate(
+        search_screen,
+        template,
+        cv2.TM_CCOEFF_NORMED,
+    )
+    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+    match_x = max_loc[0] + offset_x
+    match_y = max_loc[1] + offset_y
+
+    return float(max_val), {
+        "x": match_x,
+        "y": match_y,
+        "width": template_w,
+        "height": template_h,
+        "confidence": float(max_val),
+        "center_x": match_x + template_w // 2,
+        "center_y": match_y + template_h // 2,
+    }
+
+
 def draw_match(screen, match):
     debug = screen.copy()
 
