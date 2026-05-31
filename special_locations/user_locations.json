@@ -8,7 +8,7 @@
             "map": "temple_of_kalima_1",
             "wire": 2,
             "x": 1522,
-            "y": 409
+            "y": 418
         },
         {
             "id": "kalima_1_elf_buff",
@@ -17,8 +17,8 @@
             "name": "Elf Buff",
             "map": "divine_realm_1",
             "wire": 1,
-            "x": 1422,
-            "y": 589
+            "x": 1178,
+            "y": 791
         }
     ]
 }

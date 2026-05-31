@@ -172,3 +172,60 @@ def make_location_id(profile_name, location_type, name=None):
     if not safe_name:
         safe_name = "unnamed"
     return f"{profile_key}_{location_type}_{safe_name}"
+
+
+def duplicate_profile_locations(source_profile, target_profile):
+    source = normalize_profile_name(source_profile)
+    target = normalize_profile_name(target_profile)
+    if not source or not target:
+        raise ValueError("source_profile and target_profile are required")
+
+    data = load_special_locations()
+    locations = data.get("locations", [])
+
+    for location_type in _ACTIVE_SINGLE_TYPES:
+        source_location = get_active_location(source, location_type)
+        if not source_location:
+            continue
+
+        new_location = dict(source_location)
+        new_location["profile"] = target
+        new_location["id"] = make_location_id(target, location_type)
+
+        locations = [
+            loc
+            for loc in locations
+            if not (
+                loc.get("type") == location_type
+                and normalize_profile_name(loc.get("profile")) == target
+            )
+        ]
+        locations.append(new_location)
+        log(
+            f"[LOCATIONS] Duplicated {location_type} "
+            f"{source} -> {target}: {new_location['id']}"
+        )
+
+    data["locations"] = locations
+    save_special_locations(data)
+
+
+def delete_profile_locations(profile_name):
+    profile = normalize_profile_name(profile_name)
+    if not profile:
+        return 0
+
+    data = load_special_locations()
+    locations = data.get("locations", [])
+    kept = [
+        loc
+        for loc in locations
+        if normalize_profile_name(loc.get("profile")) != profile
+    ]
+    removed = len(locations) - len(kept)
+    if removed:
+        data["locations"] = kept
+        save_special_locations(data)
+        log(f"[LOCATIONS] Removed {removed} location(s) for profile {profile}")
+
+    return removed

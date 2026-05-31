@@ -8,7 +8,14 @@ from core.screen import get_screen
 from core.vision import find_template
 from core.ui import find_template_with_scroll
 from core.profile import get_current_profile_name, load_profile
-from core.navigation_config import load_map_definition
+from core.navigation_config import (
+    IMPLEMENTED_NAVIGATION_BEHAVIORS,
+    is_navigation_implemented,
+    is_navigation_supported,
+    load_map_definition,
+    log_unsupported_navigation_behavior,
+    navigation_behavior,
+)
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.special_locations import get_farm_spot_location
 from coordinates.ui import CLOSE_X_TEMPLATE, MAP_WINDOW_OPEN_TEMPLATE
@@ -390,7 +397,8 @@ def _filter_post_spot_actions(actions):
 
 
 def _navigation_behavior(navigation):
-    return navigation.get("behavior", "modal_enter")
+    behavior = navigation.get("behavior", "modal_enter")
+    return str(behavior).strip() if behavior else "modal_enter"
 
 
 def _enter_map_modal_enter(map_def, navigation, log_prefix):
@@ -476,15 +484,29 @@ def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]"):
     navigation = map_def["navigation"]
     behavior = _navigation_behavior(navigation)
 
+    if not is_navigation_supported(map_def):
+        log_unsupported_navigation_behavior(map_def)
+        return False
+
+    if not is_navigation_implemented(map_def):
+        map_id = map_def.get("id", "?")
+        log(
+            f"{log_prefix} Navigation behavior {behavior!r} not implemented "
+            f"for map {map_id}"
+        )
+        return False
+
     if behavior == "direct_teleport":
         return _enter_map_direct_teleport(map_def, navigation, log_prefix)
 
-    if behavior != "modal_enter":
-        log(
-            f"{log_prefix} Unknown navigation behavior {behavior!r}; "
-            "using modal_enter"
-        )
-    return _enter_map_modal_enter(map_def, navigation, log_prefix)
+    if behavior == "modal_enter":
+        return _enter_map_modal_enter(map_def, navigation, log_prefix)
+
+    log(
+        f"{log_prefix} Navigation behavior {behavior!r} not in "
+        f"{sorted(IMPLEMENTED_NAVIGATION_BEHAVIORS)}"
+    )
+    return False
 
 
 def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION]"):
@@ -504,9 +526,10 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
 
     wire_id = _normalize_wire_id(wire_id)
 
+    behavior = navigation_behavior(map_def) or _navigation_behavior(navigation)
     log(
         f"{log_prefix} Going to: {map_def['name']} | "
-        f"wire {wire_id} | behavior {_navigation_behavior(navigation)}"
+        f"wire {wire_id} | behavior {behavior}"
     )
 
     log(f"{log_prefix} Cleaning UI before navigation")

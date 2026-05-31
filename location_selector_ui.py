@@ -1,13 +1,38 @@
 import tkinter as tk
-from tkinter import ttk
 
 from PIL import Image, ImageTk
 
 from core.logger import log
 from core.path_utils import resource_path
-from core.window_utils import center_window
-from core.navigation_config import load_all_map_definitions, load_map_definition
+from core.ui_theme import (
+    ACCENT_GREEN,
+    ACCENT_PURPLE,
+    COMBO_WIDTH,
+    ENTRY_WIDTH_DEFAULT,
+    PAD_ROW,
+    PAD_WINDOW,
+    PANEL_BG,
+    PANEL_BORDER,
+    PREVIEW_BG,
+    TEXT_SECONDARY,
+    UI_BG,
+    configure_window,
+    create_combobox,
+    create_entry,
+    create_form_label,
+    create_packed_section,
+    create_primary_button,
+    setup_theme,
+    ui_label,
+)
+from core.window_utils import fit_and_center_window
+from core.navigation_config import (
+    is_map_navigable,
+    list_implemented_navigation_maps,
+    load_map_definition,
+)
 from core.special_locations import (
+    get_active_location,
     make_location_id,
     normalize_profile_name,
     upsert_location,
@@ -16,10 +41,24 @@ from core.special_locations import (
 CANVAS_WIDTH = 900
 CANVAS_HEIGHT = 506
 MARKER_RADIUS = 6
+LOCATION_WINDOW_INITIAL_WIDTH = 1000
+LOCATION_WINDOW_INITIAL_HEIGHT = 700
+LOCATION_WINDOW_MIN_WIDTH = 900
+LOCATION_WINDOW_MIN_HEIGHT = 650
 
 LOCATION_TITLES = {
     "farm_spot": "Configurar Farm Spot Visual",
     "elf_buff": "Configurar Elf Buff",
+}
+
+LOCATION_ICONS = {
+    "farm_spot": "◎",
+    "elf_buff": "🍃",
+}
+
+LOCATION_ACCENTS = {
+    "farm_spot": ACCENT_PURPLE,
+    "elf_buff": ACCENT_GREEN,
 }
 
 
@@ -57,54 +96,142 @@ def _wire_options_from_map_def(map_def):
 
     wires = map_def.get("wires") or {}
     if wires:
-        wire_ids = sorted(
-            {_safe_int(key, 0) for key in wires} - {0}
-        )
+        wire_ids = sorted({_safe_int(key, 0) for key in wires} - {0})
         return wire_ids
     return []
 
 
-def _map_sort_key(map_def):
-    order = map_def.get("order")
-    try:
-        order = int(order) if order is not None else 9999
-    except (TypeError, ValueError):
-        order = 9999
-    submap = _safe_int(map_def.get("submap"), 1)
-    name = map_def.get("name") or map_def["id"]
-    return (order, submap, name)
-
-
-def _build_map_display_mapping():
-    sorted_defs = sorted(
-        load_all_map_definitions().values(),
-        key=_map_sort_key,
-    )
+def _build_map_display_mapping(include_map_ids=None):
     map_display_to_id = {}
     map_display_names = []
-    for map_def in sorted_defs:
+    for map_def in list_implemented_navigation_maps(include_map_ids=include_map_ids):
         display_name = map_def.get("name") or map_def["id"]
         map_display_to_id[display_name] = map_def["id"]
         map_display_names.append(display_name)
     return map_display_to_id, map_display_names
 
 
-def open_location_selector(location_type, profile_name):
+def open_location_selector(location_type, profile_name, on_close=None):
     profile_name = normalize_profile_name(profile_name)
     if not profile_name:
         log("[LOCATIONS] Profile name is required")
         return
 
     title = LOCATION_TITLES.get(location_type, f"Configurar {location_type}")
+    icon = LOCATION_ICONS.get(location_type, "📍")
+    accent = LOCATION_ACCENTS.get(location_type, ACCENT_PURPLE)
 
-    map_display_to_id, map_display_names = _build_map_display_mapping()
+    existing_location = get_active_location(profile_name, location_type)
+    include_map_ids = []
+    if existing_location and existing_location.get("map"):
+        existing_map_id = existing_location["map"]
+        try:
+            existing_map_def = load_map_definition(existing_map_id)
+            if is_map_navigable(existing_map_def):
+                include_map_ids.append(existing_map_id)
+        except FileNotFoundError:
+            pass
+
+    map_display_to_id, map_display_names = _build_map_display_mapping(include_map_ids)
 
     def selected_map_id():
         return map_display_to_id.get(map_var.get().strip(), "")
 
     window = tk.Toplevel()
     window.title(title)
-    center_window(window, 1000, 780)
+    configure_window(window)
+    setup_theme(window)
+
+    def _notify_close():
+        if on_close is not None:
+            on_close()
+
+    def close_location_window():
+        try:
+            window.destroy()
+        except tk.TclError:
+            pass
+        _notify_close()
+
+    window.protocol("WM_DELETE_WINDOW", close_location_window)
+
+    main = tk.Frame(window, bg=UI_BG)
+    main.pack(fill=tk.BOTH, expand=True, padx=PAD_WINDOW, pady=PAD_WINDOW)
+
+    form_body = create_packed_section(main, title, icon, accent=accent, fill="both")
+    form_body.grid_columnconfigure(0, weight=1)
+
+    map_var = tk.StringVar()
+    wire_var = tk.StringVar()
+    name_var = tk.StringVar(
+        value="Farm Spot" if location_type == "farm_spot" else "Elf Buff"
+    )
+
+    row = 0
+    create_form_label(form_body, "Mapa", row=row, column=0, sticky="w", pady=(0, 3))
+    map_select = create_combobox(
+        form_body,
+        map_var,
+        values=map_display_names,
+        width=COMBO_WIDTH + 8,
+        row=row + 1,
+        column=0,
+        sticky="ew",
+        pady=(0, PAD_ROW),
+    )
+    row += 2
+
+    create_form_label(form_body, "Wire", row=row, column=0, sticky="w", pady=(0, 3))
+    wire_select = create_combobox(
+        form_body,
+        wire_var,
+        width=COMBO_WIDTH + 8,
+        row=row + 1,
+        column=0,
+        sticky="ew",
+        pady=(0, PAD_ROW),
+    )
+    row += 2
+
+    create_form_label(form_body, "Nombre", row=row, column=0, sticky="w", pady=(0, 3))
+    name_entry = create_entry(
+        form_body,
+        textvariable=name_var,
+        width=ENTRY_WIDTH_DEFAULT + 10,
+        row=row + 1,
+        column=0,
+        sticky="ew",
+        pady=(0, PAD_ROW),
+    )
+    row += 2
+
+    message_label = ui_label(form_body, "", fg=TEXT_SECONDARY)
+    message_label.grid(row=row, column=0, sticky="w", pady=(0, PAD_ROW))
+    row += 1
+
+    coords_label = ui_label(form_body, "X: - | Y: -", font=("Segoe UI", 10, "bold"))
+    coords_label.grid(row=row, column=0, sticky="w", pady=(0, PAD_ROW))
+
+    canvas_section = create_packed_section(main, "Mapa", "🗺", accent=accent, fill="both")
+    canvas_frame = tk.Frame(
+        canvas_section,
+        width=CANVAS_WIDTH,
+        height=CANVAS_HEIGHT,
+        bg=PREVIEW_BG,
+        highlightthickness=1,
+        highlightbackground=PANEL_BORDER,
+    )
+    canvas_frame.pack(pady=(0, PAD_ROW))
+    canvas_frame.pack_propagate(False)
+
+    canvas = tk.Canvas(
+        canvas_frame,
+        width=CANVAS_WIDTH,
+        height=CANVAS_HEIGHT,
+        bg=PREVIEW_BG,
+        highlightthickness=0,
+    )
+    canvas.pack()
 
     state = {
         "scale": 1.0,
@@ -117,58 +244,6 @@ def open_location_selector(location_type, profile_name):
         "photo": None,
         "marker_id": None,
     }
-
-    tk.Label(window, text="Mapa").pack(pady=(10, 2))
-    map_var = tk.StringVar()
-    map_select = ttk.Combobox(
-        window,
-        textvariable=map_var,
-        values=map_display_names,
-        state="readonly",
-        width=40,
-    )
-    map_select.pack(pady=2)
-
-    tk.Label(window, text="Wire").pack(pady=(8, 2))
-    wire_var = tk.StringVar()
-    wire_select = ttk.Combobox(
-        window,
-        textvariable=wire_var,
-        state="readonly",
-        width=40,
-    )
-    wire_select.pack(pady=2)
-
-    tk.Label(window, text="Nombre").pack(pady=(8, 2))
-    name_var = tk.StringVar(value="Farm Spot" if location_type == "farm_spot" else "Elf Buff")
-    name_entry = tk.Entry(window, textvariable=name_var, width=42)
-    name_entry.pack(pady=2)
-
-    message_label = tk.Label(window, text="", fg="#888888")
-    message_label.pack(pady=4)
-
-    canvas_frame = tk.Frame(
-        window,
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
-        bg="#2b2b2b",
-        highlightthickness=1,
-        highlightbackground="#444444",
-    )
-    canvas_frame.pack(pady=8)
-    canvas_frame.pack_propagate(False)
-
-    canvas = tk.Canvas(
-        canvas_frame,
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
-        bg="#2b2b2b",
-        highlightthickness=0,
-    )
-    canvas.pack()
-
-    coords_label = tk.Label(window, text="X: - | Y: -", font=("Arial", 11))
-    coords_label.pack(pady=4)
 
     def refresh_wire_options():
         map_id = selected_map_id()
@@ -184,13 +259,13 @@ def open_location_selector(location_type, profile_name):
             log(f"[LOCATIONS] Failed to load wires for {map_id}: {e}")
             wire_select["values"] = []
             wire_var.set("")
-            message_label.config(text="Wire no configurado", fg="#888888")
+            message_label.config(text="Wire no configurado")
             return
 
         if not wire_ids:
             wire_select["values"] = []
             wire_var.set("")
-            message_label.config(text="Wire no configurado", fg="#888888")
+            message_label.config(text="Wire no configurado")
             return
 
         wire_select["values"] = [str(w) for w in wire_ids]
@@ -355,6 +430,7 @@ def open_location_selector(location_type, profile_name):
 
         upsert_location(location)
         log(f"[LOCATIONS] Saved {location_type}: {location['id']}")
+        _notify_close()
 
     def on_map_selected(_event=None):
         load_map_image()
@@ -363,23 +439,44 @@ def open_location_selector(location_type, profile_name):
     canvas.bind("<Button-1>", on_canvas_click)
     map_select.bind("<<ComboboxSelected>>", on_map_selected)
 
-    button_frame = tk.Frame(window)
-    button_frame.pack(pady=10)
+    actions = tk.Frame(main, bg=UI_BG)
+    actions.pack(fill=tk.X, pady=(PAD_ROW, 0))
+    actions.grid_columnconfigure(0, weight=1)
+    actions.grid_columnconfigure(1, weight=1)
 
-    tk.Button(
-        button_frame,
-        text="Guardar",
-        width=16,
-        command=save_location,
-    ).pack(side=tk.LEFT, padx=5)
+    create_primary_button(
+        actions,
+        "Guardar ubicación",
+        save_location,
+    ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-    tk.Button(
-        button_frame,
-        text="Cerrar",
-        width=16,
-        command=window.destroy,
-    ).pack(side=tk.LEFT, padx=5)
+    create_primary_button(
+        actions,
+        "Cerrar",
+        close_location_window,
+    ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     if map_display_names:
-        map_var.set(map_display_names[0])
+        initial_display = map_display_names[0]
+        if include_map_ids:
+            try:
+                existing_map_def = load_map_definition(include_map_ids[0])
+                initial_display = existing_map_def.get("name") or include_map_ids[0]
+                if initial_display not in map_display_names:
+                    initial_display = map_display_names[0]
+            except FileNotFoundError:
+                pass
+        map_var.set(initial_display)
+        if existing_location:
+            wire_var.set(str(existing_location.get("wire", "")))
+            if existing_location.get("name"):
+                name_var.set(existing_location["name"])
         on_map_selected()
+
+    fit_and_center_window(
+        window,
+        LOCATION_WINDOW_INITIAL_WIDTH,
+        LOCATION_WINDOW_INITIAL_HEIGHT,
+        min_width=LOCATION_WINDOW_MIN_WIDTH,
+        min_height=LOCATION_WINDOW_MIN_HEIGHT,
+    )
