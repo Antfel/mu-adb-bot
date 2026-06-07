@@ -31,6 +31,11 @@ from core.navigation_config import (
     list_implemented_navigation_maps,
     load_map_definition,
 )
+from core.coordinate_mapping import (
+    apply_coordinate_defaults,
+    has_coordinate_mapping,
+    pixel_to_map_coord,
+)
 from core.special_locations import (
     get_active_location,
     make_location_id,
@@ -417,6 +422,12 @@ def open_location_selector(location_type, profile_name, on_close=None):
             log("[LOCATIONS] Name is required to save")
             return
 
+        try:
+            map_def = load_map_definition(map_id)
+        except Exception as e:
+            log(f"[LOCATIONS] Failed to load map definition for save: {e}")
+            return
+
         location = {
             "id": make_location_id(profile_name, location_type, name),
             "profile": profile_name,
@@ -427,6 +438,25 @@ def open_location_selector(location_type, profile_name, on_close=None):
             "x": state["selected_x"],
             "y": state["selected_y"],
         }
+
+        if has_coordinate_mapping(map_def):
+            coord = pixel_to_map_coord(
+                map_def,
+                state["selected_x"],
+                state["selected_y"],
+            )
+            if coord:
+                location["coord_x"], location["coord_y"] = coord
+                apply_coordinate_defaults(location)
+                log(
+                    "[COORD] Visual location converted to map coordinates: "
+                    f"({coord[0]}, {coord[1]})"
+                )
+        else:
+            log(
+                "[COORD] Location saved without map coordinates; "
+                "mapping not configured"
+            )
 
         upsert_location(location)
         log(f"[LOCATIONS] Saved {location_type}: {location['id']}")
