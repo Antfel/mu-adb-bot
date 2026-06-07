@@ -234,7 +234,8 @@ def run_startup_sequence(device_id, already_at_spot):
     if need_navigation:
         add_log("[MAIN] Navegando al farm spot")
         if not navigate_with_retry():
-            log("[MAIN] Navegación al spot falló")
+            set_bot_status("error")
+            log("[BOT] Startup failed: could not reach farm spot")
             return False
 
     if not ensure_auto_mode():

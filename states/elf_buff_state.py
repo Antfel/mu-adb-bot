@@ -40,7 +40,9 @@ def go_to_elf_buff(device_id):
         log("[ELF] Failed to navigate to elf buff map/wire")
         return False
 
-    tap_visual_location(x, y, device_id, log_prefix="[ELF]", label="elf buff")
+    if not tap_visual_location(x, y, device_id, log_prefix="[ELF]", label="elf buff"):
+        log("[ELF] Failed to reach elf buff location")
+        return False
 
     wait(5)
     log("[ELF] Elf buff route completed")

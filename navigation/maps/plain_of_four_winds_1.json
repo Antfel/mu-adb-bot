@@ -1,0 +1,31 @@
+{
+  "id": "plain_of_four_winds_1",
+  "name": "Plain of Four Winds 1",
+  "group": "Plain of Four Winds",
+  "submap": 1,
+  "requirements": {
+    "min_level": 400
+  },
+  "navigation": {
+    "behavior": "direct_teleport",
+    "current_map_template": "templates/maps/Plain_of_four_winds/current/plain_of_four_winds_1_current.png",
+    "current_map_threshold": 0.72,
+    "map_head_template": "templates/maps/Plain_of_four_winds/mapsui/plain_of_four_winds_head.png",
+    "map_option_template": "templates/maps/Plain_of_four_winds/mapsui/plain_of_four_winds_1.png",
+    "enter_wait": 10,
+    "map_list_swipe": {
+      "x1": 530,
+      "y1": 708,
+      "x2": 530,
+      "y2": 600,
+      "duration": 250
+    }
+  },
+  "maintenance": {
+    "map_ui_image": "templates/maps/Plain_of_four_winds/maintenance/plains_of_four_winds_1_reference.png",
+    "image_width": 2560,
+    "image_height": 1440
+  },
+  "order": 22,
+  "wire": 6
+}

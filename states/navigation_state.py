@@ -16,13 +16,16 @@ from core.navigation_config import (
     log_unsupported_navigation_behavior,
     navigation_behavior,
 )
+from core.current_map_detection import is_current_map
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.special_locations import get_farm_spot_location
+from states.map_state import resolve_expected_farm_map_id
 from coordinates.ui import CLOSE_X_TEMPLATE, MAP_WINDOW_OPEN_TEMPLATE
 
 
 MAP_BUTTON = {"x": 2440, "y": 120}
 _MAP_WINDOW_THRESHOLD = 0.8
+_POST_TELEPORT_MAP_SETTLE_SECONDS = 1.5
 
 _WIRE_THRESHOLD = 0.8
 AUTO_NAVIGATING_TEMPLATE = "templates/ui/common/auto_navigating.png"
@@ -33,6 +36,15 @@ _AUTO_NAV_INITIAL_WAIT = 2
 _AUTO_NAV_FINISH_GRACE_SECONDS = 1.5
 _AUTO_NAV_MISSES_TO_FINISH = 3
 _AUTO_NAV_START_ATTEMPTS = 4
+_MOVEMENT_CHECK_REGION_REF = {
+    "reference_width": 2560,
+    "reference_height": 1440,
+    "x1": 400,
+    "y1": 250,
+    "x2": 1600,
+    "y2": 1000,
+}
+_STABILITY_CHECK_TIMEOUT_SECONDS = 10.0
 
 
 def _normalize_wire_id(wire_id):
@@ -251,7 +263,107 @@ def _is_auto_navigating():
     )
 
 
-def wait_until_navigation_complete():
+def _movement_check_crop(screen):
+    if screen is None:
+        return None
+
+    screen_h, screen_w = screen.shape[:2]
+    ref_w = _MOVEMENT_CHECK_REGION_REF["reference_width"]
+    ref_h = _MOVEMENT_CHECK_REGION_REF["reference_height"]
+    scale_x = screen_w / ref_w
+    scale_y = screen_h / ref_h
+
+    x1 = int(_MOVEMENT_CHECK_REGION_REF["x1"] * scale_x)
+    y1 = int(_MOVEMENT_CHECK_REGION_REF["y1"] * scale_y)
+    x2 = int(_MOVEMENT_CHECK_REGION_REF["x2"] * scale_x)
+    y2 = int(_MOVEMENT_CHECK_REGION_REF["y2"] * scale_y)
+
+    x1 = max(0, min(x1, screen_w))
+    x2 = max(0, min(x2, screen_w))
+    y1 = max(0, min(y1, screen_h))
+    y2 = max(0, min(y2, screen_h))
+
+    if x2 <= x1 or y2 <= y1:
+        return screen
+
+    crop = screen[y1:y2, x1:x2]
+    return crop if crop.size > 0 else screen
+
+
+def _region_similarity(region_a, region_b):
+    import numpy as np
+
+    if region_a is None or region_b is None or region_a.size == 0 or region_b.size == 0:
+        return 0.0
+
+    if region_a.shape != region_b.shape:
+        height = min(region_a.shape[0], region_b.shape[0])
+        width = min(region_a.shape[1], region_b.shape[1])
+        region_a = region_a[:height, :width]
+        region_b = region_b[:height, :width]
+
+    diff = np.abs(
+        region_a.astype(np.float32) - region_b.astype(np.float32)
+    ).mean() / 255.0
+    return 1.0 - float(diff)
+
+
+def _save_stability_debug(region_a, region_b):
+    import cv2
+
+    from core.path_utils import get_app_root
+
+    debug_dir = get_app_root() / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    if region_a is not None and region_a.size > 0:
+        cv2.imwrite(str(debug_dir / "navigation_stability_a.png"), region_a)
+    if region_b is not None and region_b.size > 0:
+        cv2.imwrite(str(debug_dir / "navigation_stability_b.png"), region_b)
+
+
+def wait_for_screen_stability(
+    device_id,
+    samples=3,
+    interval=1.0,
+    threshold=0.98,
+    timeout=None,
+):
+    if device_id:
+        bind_adb_device(device_id)
+
+    if timeout is None:
+        timeout = _STABILITY_CHECK_TIMEOUT_SECONDS
+
+    stable_count = 0
+    start = time.time()
+    last_region_a = None
+    last_region_b = None
+
+    while time.time() - start < timeout:
+        screen_a = get_screen()
+        wait(interval)
+        screen_b = get_screen()
+
+        region_a = _movement_check_crop(screen_a)
+        region_b = _movement_check_crop(screen_b)
+        last_region_a = region_a
+        last_region_b = region_b
+
+        similarity = _region_similarity(region_a, region_b)
+        if similarity >= threshold:
+            stable_count += 1
+            if stable_count >= samples:
+                log("[NAVIGATION] Screen stable; navigation complete")
+                return True
+        else:
+            stable_count = 0
+
+    _save_stability_debug(last_region_a, last_region_b)
+    return False
+
+
+def wait_until_navigation_complete(device_id=None):
     log("[NAVIGATION] Waiting for auto navigation to start")
     wait(_AUTO_NAV_INITIAL_WAIT)
 
@@ -268,6 +380,13 @@ def wait_until_navigation_complete():
         log(
             "[NAVIGATION] Auto navigation template not detected "
             "after start attempts"
+        )
+        wait_for_screen_stability(
+            device_id,
+            samples=2,
+            interval=0.5,
+            threshold=0.98,
+            timeout=5.0,
         )
         return True
 
@@ -288,9 +407,15 @@ def wait_until_navigation_complete():
                 f"{misses}/{_AUTO_NAV_MISSES_TO_FINISH}"
             )
             if misses >= _AUTO_NAV_MISSES_TO_FINISH:
-                log("[NAVIGATION] Auto navigating finished")
-                wait(_AUTO_NAV_FINISH_GRACE_SECONDS)
-                return True
+                if wait_for_screen_stability(device_id):
+                    wait(_AUTO_NAV_FINISH_GRACE_SECONDS)
+                    return True
+
+                log(
+                    "[NAVIGATION] Auto navigating text lost but "
+                    "movement continues"
+                )
+                misses = 0
 
         wait(_AUTO_NAV_POLL_SECONDS)
 
@@ -325,12 +450,61 @@ def wait_until_map_window_closed(timeout=5, poll_interval=0.3):
     return False
 
 
-def open_map_window():
-    tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-    if wait_until_map_window_open():
-        log("[MAP] Map window open")
-        return True
-    log("[MAP] Map window open timeout")
+def _save_map_open_debug_screenshot(attempt):
+    import cv2
+
+    from core.path_utils import get_app_root
+
+    debug_dir = get_app_root() / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    screen = get_screen()
+    if screen is not None:
+        cv2.imwrite(
+            str(debug_dir / f"map_open_failed_attempt_{attempt}.png"),
+            screen,
+        )
+
+
+def _try_dismiss_visible_popup():
+    if not Path(CLOSE_X_TEMPLATE).is_file():
+        return
+
+    screen = get_screen()
+    close_match = find_template(
+        screen,
+        CLOSE_X_TEMPLATE,
+        threshold=_MAP_WINDOW_THRESHOLD,
+    )
+    if not close_match:
+        return
+
+    tap(close_match["center_x"], close_match["center_y"])
+    wait(0.5)
+    log("[MAP] Dismissed popup before opening map")
+
+
+def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settle=False):
+    if device_id:
+        bind_adb_device(device_id)
+
+    if post_teleport_settle:
+        wait(_POST_TELEPORT_MAP_SETTLE_SECONDS)
+
+    _try_dismiss_visible_popup()
+
+    for attempt in range(1, retries + 1):
+        tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+        if wait_until_map_window_open(timeout=timeout):
+            log("[MAP] Map window open")
+            return True
+
+        log(f"[MAP] Map window open attempt {attempt} failed")
+        _save_map_open_debug_screenshot(attempt)
+        if attempt < retries:
+            wait(1)
+
+    log("[MAP] Map window open failed after retries")
     return False
 
 
@@ -359,25 +533,28 @@ def close_map_window():
     return False
 
 
-def wait_until_map_loaded(map_def, timeout=None, poll_interval=0.5):
+def wait_until_map_loaded(map_def, device_id=None, timeout=None, poll_interval=0.5):
     navigation = map_def.get("navigation", {})
-    current_template = navigation.get("current_map_template")
     enter_wait = navigation.get("enter_wait", 8)
     if timeout is None:
         timeout = enter_wait if enter_wait else 10
 
-    if not current_template:
+    detection = navigation.get("current_map_detection")
+    has_template = bool(navigation.get("current_map_template"))
+    has_ocr = (
+        isinstance(detection, dict)
+        and detection.get("method") == "ocr"
+        and detection.get("region")
+        and detection.get("expected_text")
+    )
+
+    if not has_template and not has_ocr:
         wait(timeout)
         return True
 
     start = time.time()
     while time.time() - start < timeout:
-        screen = get_screen()
-        if find_template(
-            screen,
-            current_template,
-            threshold=0.8,
-        ):
+        if is_current_map(device_id, map_def):
             log("[NAVIGATION] Map loaded confirmed")
             return True
         wait(poll_interval)
@@ -401,7 +578,7 @@ def _navigation_behavior(navigation):
     return str(behavior).strip() if behavior else "modal_enter"
 
 
-def _enter_map_modal_enter(map_def, navigation, log_prefix):
+def _enter_map_modal_enter(map_def, navigation, log_prefix, device_id=None):
     head = find_template_with_scroll(
         navigation["map_head_template"],
         threshold=0.8,
@@ -458,11 +635,27 @@ def _enter_map_modal_enter(map_def, navigation, log_prefix):
 
     log(f"{log_prefix} Entering map")
 
-    wait_until_map_loaded(map_def)
+    wait_until_map_loaded(map_def, device_id=device_id)
     return True
 
 
-def _enter_map_direct_teleport(map_def, navigation, log_prefix):
+def _enter_map_direct_teleport(map_def, navigation, log_prefix, device_id=None):
+    head_template = navigation.get("map_head_template")
+    if head_template:
+        head = find_template_with_scroll(
+            head_template,
+            threshold=0.8,
+            swipe_coords=navigation.get("map_list_swipe"),
+        )
+
+        if not head:
+            log(f"{log_prefix} Map head not found")
+            return False
+
+        tap(head["center_x"], head["center_y"])
+        wait(2)
+        log(f"{log_prefix} Map head selected")
+
     map_option = find_template_with_scroll(
         navigation["map_option_template"],
         threshold=0.8,
@@ -476,11 +669,11 @@ def _enter_map_direct_teleport(map_def, navigation, log_prefix):
     tap(map_option["center_x"], map_option["center_y"])
     log(f"{log_prefix} Direct teleport selected")
 
-    wait_until_map_loaded(map_def)
+    wait_until_map_loaded(map_def, device_id=device_id)
     return True
 
 
-def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]"):
+def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]", device_id=None):
     navigation = map_def["navigation"]
     behavior = _navigation_behavior(navigation)
 
@@ -497,10 +690,14 @@ def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]"):
         return False
 
     if behavior == "direct_teleport":
-        return _enter_map_direct_teleport(map_def, navigation, log_prefix)
+        return _enter_map_direct_teleport(
+            map_def, navigation, log_prefix, device_id=device_id
+        )
 
     if behavior == "modal_enter":
-        return _enter_map_modal_enter(map_def, navigation, log_prefix)
+        return _enter_map_modal_enter(
+            map_def, navigation, log_prefix, device_id=device_id
+        )
 
     log(
         f"{log_prefix} Navigation behavior {behavior!r} not in "
@@ -535,10 +732,10 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
     log(f"{log_prefix} Cleaning UI before navigation")
     clean_game_ui(device_id)
 
-    if not open_map_window():
+    if not open_map_window(device_id):
         return False, map_def
 
-    if not _enter_map_by_behavior(map_def, log_prefix):
+    if not _enter_map_by_behavior(map_def, log_prefix, device_id=device_id):
         return False, map_def
 
     if not switch_to_wire(map_def, wire_id):
@@ -550,17 +747,27 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
 def tap_visual_location(x, y, device_id, log_prefix="[NAVIGATION]", label="location"):
     bind_adb_device(device_id)
 
-    if not open_map_window():
-        log(f"{log_prefix} Failed to open map window")
-        return
+    if not open_map_window(
+        device_id,
+        retries=3,
+        timeout=5,
+        post_teleport_settle=True,
+    ):
+        log("[NAVIGATION] Failed to open map window")
+        return False
 
     log(f"{log_prefix} Clicking {label} at {x},{y}")
     tap(x, y)
 
     if not close_map_window():
         log(f"{log_prefix} Failed to close map window")
+        return False
 
-    wait_until_navigation_complete()
+    if not wait_until_navigation_complete(device_id):
+        log(f"{log_prefix} Navigation to {label} did not complete")
+        return False
+
+    return True
 
 
 def _resolve_farm_destination(active_farm_spot, spot_id, map_def):
@@ -612,6 +819,19 @@ def go_to_active_farm_spot(device_id):
             "using profile map/wire and legacy farm spot"
         )
 
+    expected_map_id, expected_source = resolve_expected_farm_map_id(profile, profile_name)
+    profile_map_id = profile.get("map")
+    active_farm_map = active_farm_spot.get("map") if active_farm_spot else None
+
+    log(f"[NAVIGATION] active farm map = {active_farm_map or 'none'}")
+    log(f"[NAVIGATION] validation map = {expected_map_id}")
+    if profile_map_id and expected_map_id and profile_map_id != expected_map_id:
+        log(
+            "[MAP_CHECK] WARNING: profile.map "
+            f"({profile_map_id}) != expected farm map ({expected_map_id}) "
+            f"source={expected_source}"
+        )
+
     if active_farm_spot:
         map_id = active_farm_spot["map"]
         wire_id = _normalize_wire_id(active_farm_spot["wire"])
@@ -646,12 +866,14 @@ def go_to_active_farm_spot(device_id):
     else:
         log(f"[NAVIGATION] Using legacy spot: {spot_id}")
 
-    tap_visual_location(
+    if not tap_visual_location(
         farm_dest["x"],
         farm_dest["y"],
         device_id,
         label="farm spot",
-    )
+    ):
+        log("[NAVIGATION] Failed to reach visual farm spot")
+        return False
 
     legacy_spot = farm_dest.get("legacy_spot")
     post_spot_actions = _filter_post_spot_actions(
