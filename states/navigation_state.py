@@ -16,11 +16,18 @@ from core.navigation_config import (
     log_unsupported_navigation_behavior,
     navigation_behavior,
 )
+from core.coordinate_mapping import (
+    DEFAULT_ARRIVAL_RADIUS,
+    distance_coords,
+    location_has_coordinates,
+)
+from core.coordinate_reader import read_current_coordinates
 from core.current_map_detection import is_current_map
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.special_locations import get_farm_spot_location
 from states.map_state import resolve_expected_farm_map_id
-from coordinates.ui import CLOSE_X_TEMPLATE, MAP_WINDOW_OPEN_TEMPLATE
+from core.path_utils import resource_path
+from coordinates.ui import CLOSE_BUTTON, CLOSE_X_TEMPLATE, MAP_WINDOW_OPEN_TEMPLATE
 
 
 MAP_BUTTON = {"x": 2440, "y": 120}
@@ -45,6 +52,26 @@ _MOVEMENT_CHECK_REGION_REF = {
     "y2": 1000,
 }
 _STABILITY_CHECK_TIMEOUT_SECONDS = 10.0
+
+_COMMON_WIRE_SWITCH_DEFAULTS = {
+    "enabled": True,
+    "hud_detection": True,
+    "templates": {
+        "switch_button": "templates/wires/common/switch_button.png",
+        "popup_open": "templates/wires/common/wire_popup_open.png",
+        "enter_button": "templates/wires/common/wire_enter_button.png",
+        "selected": "templates/wires/common/wire_selected.png",
+    },
+    "popup_scroll": {
+        "x1": 930,
+        "y1": 560,
+        "x2": 930,
+        "y2": 300,
+        "duration": 300,
+        "max_attempts": 5,
+    },
+    "switch_wait": 5,
+}
 
 
 def _normalize_wire_id(wire_id):
@@ -93,7 +120,7 @@ def _open_wire_popup(wire_config):
         log("[NAVIGATION] Wire switch button not found")
         return False
 
-    log("[NAVIGATION] Opening wire popup")
+    log("[WIRE] Opening wire selector")
     tap(switch_button["center_x"], switch_button["center_y"])
     wait(1)
 
@@ -159,6 +186,70 @@ def _confirm_wire_switch(wire_config):
     return True
 
 
+def _wire_count_from_metadata(map_def):
+    wire_value = map_def.get("wire")
+    if isinstance(wire_value, bool):
+        return None
+    if isinstance(wire_value, int) and wire_value > 1:
+        return wire_value
+    if isinstance(wire_value, str):
+        try:
+            count = int(wire_value.strip())
+            return count if count > 1 else None
+        except (TypeError, ValueError):
+            return None
+
+    wires = map_def.get("wires")
+    if isinstance(wires, dict) and len(wires) > 1:
+        return len(wires)
+
+    return None
+
+
+def _common_wire_template_exists(relative_path):
+    return Path(resource_path(relative_path)).is_file()
+
+
+def _build_inferred_wire_switch_config(map_def):
+    wire_count = _wire_count_from_metadata(map_def)
+    if not wire_count or wire_count <= 1:
+        return None
+
+    options = {}
+    hud = {}
+    for wire_id in range(1, wire_count + 1):
+        option_path = f"templates/wires/common/wire_{wire_id}_option.png"
+        if _common_wire_template_exists(option_path):
+            options[str(wire_id)] = option_path
+
+        hud_path = f"templates/wires/common/wire_{wire_id}_hud.png"
+        if _common_wire_template_exists(hud_path):
+            hud[str(wire_id)] = hud_path
+
+    if not options:
+        return None
+
+    config = {
+        **_COMMON_WIRE_SWITCH_DEFAULTS,
+        "available_wires": list(range(1, wire_count + 1)),
+        "templates": {
+            **_COMMON_WIRE_SWITCH_DEFAULTS["templates"],
+            "options": options,
+            "hud": hud,
+        },
+    }
+    return config
+
+
+def _map_supports_wire_switch(map_def):
+    wire_config = _get_wire_switch_config(map_def)
+    if not wire_config or not wire_config.get("enabled", False):
+        return False
+
+    available_wires = wire_config.get("available_wires", [])
+    return len(available_wires) > 1
+
+
 def _get_wire_switch_config(map_def):
     wire_config = map_def.get("wire_switch")
     if isinstance(wire_config, dict):
@@ -166,30 +257,38 @@ def _get_wire_switch_config(map_def):
     legacy = map_def.get("wire")
     if isinstance(legacy, dict):
         return legacy
-    return None
+    return _build_inferred_wire_switch_config(map_def)
 
 
 def switch_to_wire(map_def, wire_id):
+    try:
+        wire_id = _normalize_wire_id(wire_id)
+    except (TypeError, ValueError):
+        log(f"[NAVIGATION] Invalid wire id: {wire_id}")
+        return False
+
+    log(f"[WIRE] Requested wire: {wire_id}")
+    supports_wires = _map_supports_wire_switch(map_def)
+    log(f"[WIRE] Current map supports wires: {supports_wires}")
+
+    if wire_id == 1:
+        log("[WIRE] Skipping wire switch: wire=1")
+        return True
+
     wire_config = _get_wire_switch_config(map_def)
     if not wire_config:
         log("[NAVIGATION] Wire switching not configured")
-        return True
+        return False
 
     if not wire_config.get("enabled", False):
         log("[NAVIGATION] Wire switching disabled for this map")
-        return True
+        return False
 
     available_wires = [
         _normalize_wire_id(w) for w in wire_config.get("available_wires", [])
     ]
     if len(available_wires) <= 1:
         log("[NAVIGATION] Single wire map, skipping wire switch")
-        return True
-
-    try:
-        wire_id = _normalize_wire_id(wire_id)
-    except (TypeError, ValueError):
-        log(f"[NAVIGATION] Invalid wire id: {wire_id}")
         return False
 
     if wire_id not in available_wires:
@@ -204,6 +303,7 @@ def switch_to_wire(map_def, wire_id):
         hud_template = _get_hud_template(wire_config, wire_id)
         if hud_template and _find_template(hud_template):
             log(f"[NAVIGATION] Already on wire {wire_id} (HUD)")
+            log("[WIRE] Wire selection completed")
             return True
 
     if not _open_wire_popup(wire_config):
@@ -221,7 +321,7 @@ def switch_to_wire(map_def, wire_id):
         if not confirm_ok:
             return False
     else:
-        log(f"[NAVIGATION] Selecting wire {wire_id}")
+        log(f"[WIRE] Selecting wire {wire_id}")
         tap(wire_match["center_x"], wire_match["center_y"])
         wait(1)
 
@@ -238,6 +338,7 @@ def switch_to_wire(map_def, wire_id):
         hud_template = _get_hud_template(wire_config, wire_id)
         if hud_template and _find_template(hud_template):
             log(f"[NAVIGATION] Wire {wire_id} confirmed via HUD")
+            log("[WIRE] Wire selection completed")
             return True
 
         log(
@@ -245,9 +346,11 @@ def switch_to_wire(map_def, wire_id):
         )
         if confirm_ok:
             log("[NAVIGATION] Continuing after successful enter confirmation")
+            log("[WIRE] Wire selection completed")
             return True
         return False
 
+    log("[WIRE] Wire selection completed")
     return True
 
 
@@ -420,6 +523,48 @@ def wait_until_navigation_complete(device_id=None):
         wait(_AUTO_NAV_POLL_SECONDS)
 
 
+def wait_until_arrives_at_coord(
+    device_id,
+    location,
+    map_def,
+    timeout=120,
+    poll_interval=0.5,
+):
+    if not location_has_coordinates(location):
+        log("[NAVIGATION] Location has no target coordinates")
+        return False
+
+    target = (int(location["coord_x"]), int(location["coord_y"]))
+    arrival_radius = int(location.get("arrival_radius", DEFAULT_ARRIVAL_RADIUS))
+    log(
+        f"[NAVIGATION] Waiting for coordinates target={target} "
+        f"radius={arrival_radius}"
+    )
+
+    start = time.time()
+    while time.time() - start < timeout:
+        current = read_current_coordinates(device_id, map_def=map_def)
+        if current is None:
+            log("[NAVIGATION] Coordinate read failed; retrying")
+            wait(poll_interval)
+            continue
+
+        dist = distance_coords(current, target)
+        log(
+            f"[NAVIGATION] Current=({current[0]},{current[1]}) "
+            f"distance={dist}"
+        )
+
+        if dist <= arrival_radius:
+            log("[NAVIGATION] Arrived to target coordinates")
+            return True
+
+        wait(poll_interval)
+
+    log("[NAVIGATION] Coordinate arrival timeout")
+    return False
+
+
 def _is_map_window_open():
     screen = get_screen()
     return (
@@ -466,14 +611,41 @@ def _save_map_open_debug_screenshot(attempt):
         )
 
 
+def _close_x_template_path():
+    path = Path(resource_path(CLOSE_X_TEMPLATE))
+    return path if path.is_file() else None
+
+
+def _tap_close_window(*, allow_fallback=True):
+    template_path = _close_x_template_path()
+    if template_path:
+        screen = get_screen()
+        close_match = find_template(
+            screen,
+            str(template_path),
+            threshold=_MAP_WINDOW_THRESHOLD,
+        )
+        if close_match:
+            log("[UI] Closing window using close template")
+            tap(close_match["center_x"], close_match["center_y"])
+            return True
+
+    if not allow_fallback:
+        return False
+
+    log("[UI] Close template not found, using fallback coordinates")
+    tap(CLOSE_BUTTON["x"], CLOSE_BUTTON["y"])
+    return True
+
+
 def _try_dismiss_visible_popup():
-    if not Path(CLOSE_X_TEMPLATE).is_file():
+    if not _close_x_template_path():
         return
 
     screen = get_screen()
     close_match = find_template(
         screen,
-        CLOSE_X_TEMPLATE,
+        str(_close_x_template_path()),
         threshold=_MAP_WINDOW_THRESHOLD,
     )
     if not close_match:
@@ -509,21 +681,9 @@ def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settl
 
 
 def close_map_window():
-    if not Path(CLOSE_X_TEMPLATE).is_file():
-        log(f"[MAP] Close X template missing: {CLOSE_X_TEMPLATE}")
-        return False
-
-    screen = get_screen()
-    close_match = find_template(
-        screen,
-        CLOSE_X_TEMPLATE,
-        threshold=_MAP_WINDOW_THRESHOLD,
-    )
-    if not close_match:
+    if not _tap_close_window():
         log("[MAP] Close X button not found")
         return False
-
-    tap(close_match["center_x"], close_match["center_y"])
 
     if wait_until_map_window_closed():
         log("[MAP] Map window closed")
@@ -744,7 +904,15 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
     return True, map_def
 
 
-def tap_visual_location(x, y, device_id, log_prefix="[NAVIGATION]", label="location"):
+def tap_visual_location(
+    x,
+    y,
+    device_id,
+    log_prefix="[NAVIGATION]",
+    label="location",
+    location=None,
+    map_def=None,
+):
     bind_adb_device(device_id)
 
     if not open_map_window(
@@ -763,7 +931,17 @@ def tap_visual_location(x, y, device_id, log_prefix="[NAVIGATION]", label="locat
         log(f"{log_prefix} Failed to close map window")
         return False
 
-    if not wait_until_navigation_complete(device_id):
+    if location_has_coordinates(location):
+        if map_def is None and location.get("map"):
+            try:
+                map_def = load_map_definition(location["map"])
+            except FileNotFoundError:
+                map_def = None
+
+        if not wait_until_arrives_at_coord(device_id, location, map_def):
+            log(f"{log_prefix} Navigation to {label} did not complete")
+            return False
+    elif not wait_until_navigation_complete(device_id):
         log(f"{log_prefix} Navigation to {label} did not complete")
         return False
 
@@ -866,11 +1044,16 @@ def go_to_active_farm_spot(device_id):
     else:
         log(f"[NAVIGATION] Using legacy spot: {spot_id}")
 
+    visual_location = (
+        active_farm_spot if farm_dest["source"] == "visual" else None
+    )
     if not tap_visual_location(
         farm_dest["x"],
         farm_dest["y"],
         device_id,
         label="farm spot",
+        location=visual_location,
+        map_def=map_def,
     ):
         log("[NAVIGATION] Failed to reach visual farm spot")
         return False

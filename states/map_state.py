@@ -10,6 +10,8 @@ from core.profile import get_current_profile_name, load_profile
 from core.navigation_config import load_all_map_definitions, load_map_definition
 from core.special_locations import get_farm_spot_location
 
+DEBUG_PROFILE_MAP_MISMATCH = False
+
 
 def resolve_expected_farm_map_id(profile=None, profile_name=None):
     """
@@ -142,7 +144,12 @@ def is_in_configured_map(device_id=None):
     log(f"[MAP_CHECK] expected_map_id={expected_map_id}")
     log(f"[MAP_CHECK] source={source}")
 
-    if profile_map_id and expected_map_id and profile_map_id != expected_map_id:
+    if (
+        DEBUG_PROFILE_MAP_MISMATCH
+        and profile_map_id
+        and expected_map_id
+        and profile_map_id != expected_map_id
+    ):
         log(
             "[MAP_CHECK] WARNING: profile.map "
             f"({profile_map_id}) != expected farm map ({expected_map_id})"
