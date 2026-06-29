@@ -33,14 +33,22 @@ def go_to_elf_buff(device_id):
         f"({x},{y})"
     )
 
-    nav_ok, _map_def = navigate_to_map_and_wire(
+    nav_ok, map_def = navigate_to_map_and_wire(
         map_id, wire_id, device_id, log_prefix="[ELF]"
     )
     if not nav_ok:
         log("[ELF] Failed to navigate to elf buff map/wire")
         return False
 
-    if not tap_visual_location(x, y, device_id, log_prefix="[ELF]", label="elf buff"):
+    if not tap_visual_location(
+        x,
+        y,
+        device_id,
+        log_prefix="[ELF]",
+        label="elf buff",
+        location=elf_location,
+        map_def=map_def,
+    ):
         log("[ELF] Failed to reach elf buff location")
         return False
 

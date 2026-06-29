@@ -117,7 +117,74 @@ def _parse_coordinates(raw_text):
     return None
 
 
-def read_current_coordinates(device_id):
+def _get_coordinate_bounds(map_def):
+    if not isinstance(map_def, dict):
+        return None
+
+    bounds = map_def.get("coordinate_bounds")
+    if not isinstance(bounds, dict):
+        return None
+
+    try:
+        return {
+            "x_min": int(bounds["x_min"]),
+            "x_max": int(bounds["x_max"]),
+            "y_min": int(bounds["y_min"]),
+            "y_max": int(bounds["y_max"]),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _value_in_bounds(value, min_value, max_value):
+    return min_value <= value <= max_value
+
+
+def _correct_axis_value(value, min_value, max_value, axis_name):
+    if _value_in_bounds(value, min_value, max_value):
+        return value
+
+    value_str = str(value)
+    if not value_str.startswith("1") or len(value_str) <= 1:
+        return value
+
+    corrected = int(value_str[1:])
+    if _value_in_bounds(corrected, min_value, max_value):
+        log(
+            f"[COORD] Corrected OCR {axis_name} value "
+            f"{value} -> {corrected} using coordinate_bounds"
+        )
+        return corrected
+
+    return value
+
+
+def _apply_coordinate_bounds(coords, bounds):
+    if not bounds or not coords:
+        return coords
+
+    x, y = coords
+    x = _correct_axis_value(x, bounds["x_min"], bounds["x_max"], "x")
+    y = _correct_axis_value(y, bounds["y_min"], bounds["y_max"], "y")
+
+    if not _value_in_bounds(x, bounds["x_min"], bounds["x_max"]):
+        log(
+            f"[COORD] OCR x={x} outside bounds "
+            f"[{bounds['x_min']}, {bounds['x_max']}]"
+        )
+        return None
+
+    if not _value_in_bounds(y, bounds["y_min"], bounds["y_max"]):
+        log(
+            f"[COORD] OCR y={y} outside bounds "
+            f"[{bounds['y_min']}, {bounds['y_max']}]"
+        )
+        return None
+
+    return x, y
+
+
+def read_current_coordinates(device_id, map_def=None):
     if device_id:
         bind_adb_device(device_id)
 
@@ -167,6 +234,14 @@ def read_current_coordinates(device_id):
         log("[COORD] Failed to read coordinates")
         _save_coord_debug(crop, processed, ocr_failed=True)
         return None
+
+    bounds = _get_coordinate_bounds(map_def)
+    if bounds:
+        parsed = _apply_coordinate_bounds(parsed, bounds)
+        if parsed is None:
+            log("[COORD] Failed to read coordinates")
+            _save_coord_debug(crop, processed, ocr_failed=True)
+            return None
 
     if DEBUG_COORD_OCR:
         _save_coord_debug(crop, processed, ocr_failed=False)
