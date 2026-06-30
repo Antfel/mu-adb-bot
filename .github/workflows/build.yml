@@ -29,7 +29,7 @@ jobs:
         run: scripts\build_windows.bat
 
       - name: Compress Windows artifact
-        run: Compress-Archive -Path dist/MUImmortalBot/* -DestinationPath MUImmortalBot-Windows.zip
+        run: Compress-Archive -Path dist/MUImmortalBot -DestinationPath MUImmortalBot-Windows.zip
         shell: pwsh
   
       - name: Upload artifact
