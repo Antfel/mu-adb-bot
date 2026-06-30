@@ -28,16 +28,6 @@ jobs:
       - name: Build (PyInstaller onedir)
         run: scripts\build_windows.bat
 
-      - name: Compress Windows artifact
-        run: Compress-Archive -Path dist/MUImmortalBot -DestinationPath MUImmortalBot-Windows.zip
-        shell: pwsh
-  
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MUImmortalBot-Windows
-          path: MUImmortalBot-Windows.zip
-          retention-days: 1
 
 #  build-macos:
 #    name: Build macOS

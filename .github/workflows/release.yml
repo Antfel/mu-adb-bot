@@ -32,11 +32,16 @@ jobs:
         run: scripts\build_windows.bat
 
       - name: Compress Release
-        run: Compress-Archive -Path dist/MUImmortalBot -DestinationPath MUImmortalBot-Windows.zip
         shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path dist/MUImmortalBot `
+            -DestinationPath "MUImmortalBot-${{ github.ref_name }}-Windows.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: MUImmortalBot-Windows.zip
+          files: MUImmortalBot-${{ github.ref_name }}-Windows.zip
           generate_release_notes: true
+          draft: false
+          prerelease: false
