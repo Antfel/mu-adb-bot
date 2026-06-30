@@ -24,6 +24,24 @@
     "image_width": 2560,
     "image_height": 1440
   },
+  "coordinate_bounds": {
+    "x_min": 0,
+    "x_max": 300,
+    "y_min": 0,
+    "y_max": 300
+  },
+  "coordinate_mapping": {
+    "type": "affine",
+    "version": 1,
+    "source_image_size": {
+      "width": 2560,
+      "height": 1440
+    },
+    "transform": {
+      "coord_x": [0.204082698, 0.201896478, -102.039067355],
+      "coord_y": [0.20193824, -0.199562004, 50.120392442]
+    }
+  },
   "order": 23,
   "wire": 4
 }

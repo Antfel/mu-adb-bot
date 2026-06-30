@@ -28,39 +28,45 @@ jobs:
       - name: Build (PyInstaller onedir)
         run: scripts\build_windows.bat
 
+      - name: Compress Windows artifact
+        run: Compress-Archive -Path dist/MUImmortalBot -DestinationPath MUImmortalBot-Windows.zip
+        shell: pwsh
+  
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MUImmortalBot-Windows
-          path: dist/MUImmortalBot/
-          retention-days: 30
+          path: MUImmortalBot-Windows.zip
+          retention-days: 1
 
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build (PyInstaller onedir)
-        run: |
-          chmod +x scripts/build_mac.sh
-          ./scripts/build_mac.sh
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MUImmortalBot-macOS
-          path: dist/MUImmortalBot/
-          retention-days: 30
+#  build-macos:
+#    name: Build macOS
+#    runs-on: macos-latest
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Set up Python 3.13
+#        uses: actions/setup-python@v5
+#        with:
+#          python-version: "3.13"
+#
+#      - name: Install dependencies
+#        run: |
+#          python -m pip install --upgrade pip
+#          pip install -r requirements.txt
+#          pip install pyinstaller
+#
+#      - name: Build (PyInstaller onedir)
+#        run: |
+#          chmod +x scripts/build_mac.sh
+#          ./scripts/build_mac.sh
+#      - name: Compress macOS artifact  
+#        run: zip -r MUImmortalBot-macOS.zip dist/MUImmortalBot/
+#
+#      - name: Upload artifact
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: MUImmortalBot-macOS
+#          path: MUImmortalBot-macOS.zip
+#          retention-days: 1
