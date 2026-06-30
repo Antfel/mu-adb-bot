@@ -8,7 +8,7 @@
     "map": "temple_of_kalima_1",
     "wire": 2,
     "spot": "spot_1",
-    "character_level": 437,
+    "character_level": 440,
     "display_name": "MG STR Ridax",
     "general_config": {
         "enable_elf_buff": true
