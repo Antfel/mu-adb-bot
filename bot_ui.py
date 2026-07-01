@@ -29,6 +29,7 @@ from core.session_state import configure_session, reset_session, set_current_bot
 from core.logger import get_log_file_path, init_log_file, log
 from core.adb import get_device, set_device
 from core.device_manager import get_device_screenshot, list_adb_devices, restart_adb
+from core.low_spec import get_bot_loop_delay_seconds, is_low_spec_enabled
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.window_utils import center_window
 from core.actions import wait
@@ -677,7 +678,7 @@ def bot_loop():
             log(traceback.format_exc())
             set_bot_status("error")
 
-        wait(3)
+        wait(get_bot_loop_delay_seconds())
 
     log("[BOT] bot_loop exited")
     if not bot_running:
@@ -806,7 +807,11 @@ def _begin_bot(already_at_spot):
     threading.Thread(target=_bot_worker, args=(already_at_spot,), daemon=True).start()
 
     cancel_preview_refresh()
-    schedule_preview_refresh()
+    if is_low_spec_enabled():
+        log("[LOW_SPEC] Preview auto disabled while bot is running")
+        log("[LOW_SPEC] Bot loop delay = 6s")
+    else:
+        schedule_preview_refresh()
 
 
 def _bot_worker(already_at_spot):
@@ -926,6 +931,9 @@ def schedule_preview_refresh():
     global preview_refresh_job
 
     if not bot_running:
+        return
+
+    if is_low_spec_enabled():
         return
 
     update_device_preview()
