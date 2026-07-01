@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import threading
+import traceback
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -791,13 +792,20 @@ def _apply_preview(png_bytes):
     global _preview_photo
 
     if not png_bytes:
+        log("[PREVIEW] screen received=None")
         _show_no_preview()
         return
 
+    log(f"[PREVIEW] screen received=bytes={len(png_bytes)}")
+
     try:
+        log("[PREVIEW] creating PIL Image")
         img = Image.open(io.BytesIO(png_bytes))
         if img.mode not in ("RGB", "RGBA"):
+            log("[PREVIEW] converting BGR->RGB")
             img = img.convert("RGBA")
+        else:
+            log("[PREVIEW] converting BGR->RGB")
 
         img.thumbnail((PREVIEW_WIDTH, PREVIEW_HEIGHT), Image.Resampling.LANCZOS)
 
@@ -810,28 +818,43 @@ def _apply_preview(png_bytes):
         else:
             canvas_img.paste(img, (offset_x, offset_y))
 
+        log("[PREVIEW] creating ImageTk.PhotoImage")
         _preview_photo = ImageTk.PhotoImage(canvas_img)
+        log("[PREVIEW] updating widget")
         preview_label.config(image=_preview_photo, text="", bg=PREVIEW_BG)
+        log("[PREVIEW] success")
     except Exception:
+        log(f"[PREVIEW] error:\n{traceback.format_exc()}")
         _show_no_preview()
 
 
 def update_device_preview():
     global _preview_in_progress
 
+    log("[PREVIEW] refresh requested")
+
     device_id = device_var.get().strip()
     if not device_id:
+        log("[PREVIEW] screen received=None (no device selected)")
         _show_no_preview()
         return
 
     if _preview_in_progress:
+        log("[PREVIEW] refresh skipped (previous capture in progress)")
         return
 
     def worker():
         global _preview_in_progress
         try:
             png_bytes = get_device_screenshot(device_id)
+            if png_bytes is None:
+                log("[PREVIEW] screen received=None")
+            else:
+                log(f"[PREVIEW] screen received=bytes={len(png_bytes)}")
             root.after(0, lambda: _apply_preview(png_bytes))
+        except Exception:
+            log(f"[PREVIEW] error:\n{traceback.format_exc()}")
+            root.after(0, _show_no_preview)
         finally:
             _preview_in_progress = False
 
