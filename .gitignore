@@ -1,0 +1,14 @@
+
+dist/
+build/
+*.zip
+__pycache__/
+*.pyc
+debug/*.png
+
+dist/
+build/
+*.zip
+__pycache__/
+*.pyc
+debug/*.png
