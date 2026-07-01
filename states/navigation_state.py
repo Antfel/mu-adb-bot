@@ -620,13 +620,61 @@ def wait_until_map_window_closed(timeout=5, poll_interval=0.3):
     return False
 
 
-def _save_map_open_debug_screenshot(attempt):
-    import cv2
-
+def _ensure_debug_dir():
     from core.path_utils import get_app_root
 
     debug_dir = get_app_root() / "debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
+    return debug_dir
+
+
+def _save_after_open_map_screenshot():
+    import cv2
+
+    screen = get_screen()
+    if screen is None:
+        log("[MAP] after_open_map debug: screen unavailable")
+        return
+
+    path = _ensure_debug_dir() / "after_open_map.png"
+    cv2.imwrite(str(path), screen)
+    log(f"[MAP] Saved debug/after_open_map.png")
+
+
+def _save_map_window_region_debug():
+    import cv2
+
+    screen = get_screen()
+    if screen is None:
+        log("[MAP] map_window_region debug: screen unavailable")
+        return
+
+    _confidence, match = probe_template(screen, MAP_WINDOW_OPEN_TEMPLATE)
+    if match is None:
+        log("[MAP] map_window_region debug: probe match unavailable")
+        return
+
+    x = match["x"]
+    y = match["y"]
+    w = match["width"]
+    h = match["height"]
+    crop = screen[y : y + h, x : x + w]
+    if crop.size == 0:
+        log("[MAP] map_window_region debug: empty crop")
+        return
+
+    path = _ensure_debug_dir() / "map_window_region.png"
+    cv2.imwrite(str(path), crop)
+    log(
+        f"[MAP] Saved debug/map_window_region.png "
+        f"region=({x},{y}) size={w}x{h} confidence={match['confidence']:.3f}"
+    )
+
+
+def _save_map_open_debug_screenshot(attempt):
+    import cv2
+
+    debug_dir = _ensure_debug_dir()
 
     screen = get_screen()
     if screen is not None:
@@ -694,6 +742,7 @@ def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settl
         log(f"[MAP] open_map attempt={attempt}/{retries}")
         log(f"[MAP] Tapping map button at {MAP_BUTTON['x']},{MAP_BUTTON['y']}")
         tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
+        _save_after_open_map_screenshot()
         opened = wait_until_map_window_open(timeout=timeout)
         log(f"[MAP] map_window_open result={opened}")
         if opened:
@@ -701,6 +750,7 @@ def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settl
             return True
 
         log(f"[MAP] Map window open attempt {attempt} failed")
+        _save_map_window_region_debug()
         _save_map_open_debug_screenshot(attempt)
         if attempt < retries:
             wait(1)
