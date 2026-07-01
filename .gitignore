@@ -1,0 +1,17 @@
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Debug runtime
+debug/*.png
+
+# Build artifacts
+dist/
+build/
+
+# Generated packages
+*.zip
+
+# PyInstaller
+*.spec.bak
