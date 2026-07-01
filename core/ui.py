@@ -1,3 +1,4 @@
+from core.logger import log
 from core.screen import get_screen
 from core.vision import find_template
 from core.adb import swipe
@@ -22,14 +23,21 @@ def find_template_with_scroll(
         )
 
         if match:
-
-            print(f"[UI] Template encontrado: {template}")
-
+            log(
+                f"[NAV] template={template} confidence={match['confidence']:.3f} "
+                f"threshold={threshold} found=True scroll_attempt={attempt + 1}"
+            )
             return match
 
-        print(f"[UI] Template no encontrado. Scroll #{attempt + 1}")
+        log(
+            f"[NAV] template={template} threshold={threshold} "
+            f"found=False scroll_attempt={attempt + 1}/{max_attempts}"
+        )
         if swipe_coords:
-
+            log(
+                f"[NAV] scroll from ({swipe_coords['x1']},{swipe_coords['y1']}) "
+                f"to ({swipe_coords['x2']},{swipe_coords['y2']})"
+            )
             swipe(
                 swipe_coords["x1"],
                 swipe_coords["y1"],
@@ -40,4 +48,5 @@ def find_template_with_scroll(
 
         wait(1)
 
+    log(f"[NAV] template={template} not found after {max_attempts} scroll attempts")
     return None

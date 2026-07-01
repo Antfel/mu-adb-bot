@@ -5,7 +5,7 @@ from core.logger import log
 from core.adb import bind_adb_device, tap, swipe
 from core.actions import wait, run_sequence
 from core.screen import get_screen
-from core.vision import find_template
+from core.vision import find_template, probe_template
 from core.ui import find_template_with_scroll
 from core.profile import get_current_profile_name, load_profile
 from core.navigation_config import (
@@ -72,6 +72,17 @@ _COMMON_WIRE_SWITCH_DEFAULTS = {
     },
     "switch_wait": 5,
 }
+
+
+def _log_template_probe(template_path, threshold, screen=None):
+    if screen is None:
+        screen = get_screen()
+    confidence, _match = probe_template(screen, template_path)
+    log(
+        f"[NAV] template={template_path} confidence={confidence:.3f} "
+        f"threshold={threshold}"
+    )
+    return confidence
 
 
 def _normalize_wire_id(wire_id):
@@ -467,6 +478,7 @@ def wait_for_screen_stability(
 
 
 def wait_until_navigation_complete(device_id=None):
+    log("[NAVIGATION] wait_until_navigation_complete started")
     log("[NAVIGATION] Waiting for auto navigation to start")
     wait(_AUTO_NAV_INITIAL_WAIT)
 
@@ -491,6 +503,7 @@ def wait_until_navigation_complete(device_id=None):
             threshold=0.98,
             timeout=5.0,
         )
+        log("[NAVIGATION] wait_until_navigation_complete finished=True (stability fallback)")
         return True
 
     start = time.time()
@@ -499,6 +512,7 @@ def wait_until_navigation_complete(device_id=None):
     while True:
         if time.time() - start > _AUTO_NAV_TIMEOUT:
             log("[NAVIGATION] Navigation wait timeout")
+            log("[NAVIGATION] wait_until_navigation_complete finished=False")
             return False
 
         if _is_auto_navigating():
@@ -512,6 +526,7 @@ def wait_until_navigation_complete(device_id=None):
             if misses >= _AUTO_NAV_MISSES_TO_FINISH:
                 if wait_for_screen_stability(device_id):
                     wait(_AUTO_NAV_FINISH_GRACE_SECONDS)
+                    log("[NAVIGATION] wait_until_navigation_complete finished=True")
                     return True
 
                 log(
@@ -530,6 +545,7 @@ def wait_until_arrives_at_coord(
     timeout=120,
     poll_interval=0.5,
 ):
+    log("[NAVIGATION] wait_until_arrives_at_coord started")
     if not location_has_coordinates(location):
         log("[NAVIGATION] Location has no target coordinates")
         return False
@@ -557,17 +573,24 @@ def wait_until_arrives_at_coord(
 
         if dist <= arrival_radius:
             log("[NAVIGATION] Arrived to target coordinates")
+            log("[NAVIGATION] wait_until_arrives_at_coord finished=True")
             return True
 
         wait(poll_interval)
 
     log("[NAVIGATION] Coordinate arrival timeout")
+    log("[NAVIGATION] wait_until_arrives_at_coord finished=False")
     return False
 
 
 def _is_map_window_open():
     screen = get_screen()
-    return (
+    confidence = _log_template_probe(
+        MAP_WINDOW_OPEN_TEMPLATE,
+        _MAP_WINDOW_THRESHOLD,
+        screen=screen,
+    )
+    opened = (
         find_template(
             screen,
             MAP_WINDOW_OPEN_TEMPLATE,
@@ -575,6 +598,8 @@ def _is_map_window_open():
         )
         is not None
     )
+    log(f"[MAP] map_window_open result={opened} confidence={confidence:.3f}")
+    return opened
 
 
 def wait_until_map_window_open(timeout=5, poll_interval=0.3):
@@ -666,8 +691,12 @@ def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settl
     _try_dismiss_visible_popup()
 
     for attempt in range(1, retries + 1):
+        log(f"[MAP] open_map attempt={attempt}/{retries}")
+        log(f"[MAP] Tapping map button at {MAP_BUTTON['x']},{MAP_BUTTON['y']}")
         tap(MAP_BUTTON["x"], MAP_BUTTON["y"])
-        if wait_until_map_window_open(timeout=timeout):
+        opened = wait_until_map_window_open(timeout=timeout)
+        log(f"[MAP] map_window_open result={opened}")
+        if opened:
             log("[MAP] Map window open")
             return True
 
@@ -681,15 +710,21 @@ def open_map_window(device_id=None, retries=3, timeout=5, *, post_teleport_settl
 
 
 def close_map_window():
+    log("[MAP] close_map_window started")
     if not _tap_close_window():
         log("[MAP] Close X button not found")
+        log("[MAP] close_map_window result=False")
         return False
 
-    if wait_until_map_window_closed():
+    closed = wait_until_map_window_closed()
+    log(f"[MAP] map_window_closed result={closed}")
+    if closed:
         log("[MAP] Map window closed")
+        log("[MAP] close_map_window result=True")
         return True
 
     log("[MAP] Map window close timeout")
+    log("[MAP] close_map_window result=False")
     return False
 
 
@@ -867,6 +902,10 @@ def _enter_map_by_behavior(map_def, log_prefix="[NAVIGATION]", device_id=None):
 
 
 def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION]"):
+    log(
+        f"[NAVIGATION] navigate_to_map_and_wire started map_id={map_id} "
+        f"wire={wire_id}"
+    )
     bind_adb_device(device_id)
 
     if map_id == "divine_realm_1":
@@ -889,7 +928,7 @@ def navigate_to_map_and_wire(map_id, wire_id, device_id, log_prefix="[NAVIGATION
         f"wire {wire_id} | behavior {behavior}"
     )
 
-    log(f"{log_prefix} Cleaning UI before navigation")
+    log(f"{log_prefix} Cleaning UI before navigation (close popups/chat)")
     clean_game_ui(device_id)
 
     if not open_map_window(device_id):
@@ -925,6 +964,13 @@ def tap_visual_location(
         return False
 
     log(f"{log_prefix} Clicking {label} at {x},{y}")
+    if location:
+        log(
+            f"{log_prefix} location map={location.get('map')} wire={location.get('wire')} "
+            f"pixel=({location.get('x')},{location.get('y')}) "
+            f"coord=({location.get('coord_x')},{location.get('coord_y')})"
+        )
+    log(f"{log_prefix} Final spot tap at {x},{y}")
     tap(x, y)
 
     if not close_map_window():
@@ -932,6 +978,7 @@ def tap_visual_location(
         return False
 
     if location_has_coordinates(location):
+        log(f"{log_prefix} Using wait_until_arrives_at_coord for {label}")
         if map_def is None and location.get("map"):
             try:
                 map_def = load_map_definition(location["map"])
@@ -941,9 +988,11 @@ def tap_visual_location(
         if not wait_until_arrives_at_coord(device_id, location, map_def):
             log(f"{log_prefix} Navigation to {label} did not complete")
             return False
-    elif not wait_until_navigation_complete(device_id):
-        log(f"{log_prefix} Navigation to {label} did not complete")
-        return False
+    else:
+        log(f"{log_prefix} Using wait_until_navigation_complete for {label}")
+        if not wait_until_navigation_complete(device_id):
+            log(f"{log_prefix} Navigation to {label} did not complete")
+            return False
 
     return True
 
@@ -982,6 +1031,7 @@ def _resolve_farm_destination(active_farm_spot, spot_id, map_def):
 
 
 def go_to_active_farm_spot(device_id):
+    log("[NAVIGATION] go_to_active_farm_spot started")
     bind_adb_device(device_id)
 
     profile = load_profile()
@@ -1017,6 +1067,12 @@ def go_to_active_farm_spot(device_id):
             f"[NAVIGATION] Using active farm location config: "
             f"{map_id} wire {wire_id}"
         )
+        log(
+            f"[NAVIGATION] farm spot map_id={map_id} wire={wire_id} "
+            f"x={active_farm_spot.get('x')} y={active_farm_spot.get('y')} "
+            f"coord_x={active_farm_spot.get('coord_x')} "
+            f"coord_y={active_farm_spot.get('coord_y')}"
+        )
     else:
         map_id = profile["map"]
         wire_id = _normalize_wire_id(profile["wire"])
@@ -1024,11 +1080,16 @@ def go_to_active_farm_spot(device_id):
             f"[NAVIGATION] Using profile map/wire config: "
             f"{map_id} wire {wire_id}"
         )
+        log(
+            f"[NAVIGATION] farm spot map_id={map_id} wire={wire_id} "
+            f"x=legacy y=legacy coord_x=none coord_y=none"
+        )
 
     nav_ok, map_def = navigate_to_map_and_wire(
         map_id, wire_id, device_id, log_prefix="[NAVIGATION]"
     )
     if not nav_ok:
+        log("[NAVIGATION] go_to_active_farm_spot finished=False")
         return False
 
     farm_dest = _resolve_farm_destination(active_farm_spot, spot_id, map_def)
@@ -1069,5 +1130,6 @@ def go_to_active_farm_spot(device_id):
     ensure_auto_mode()
 
     log("[NAVIGATION] Arrived to farm spot")
+    log("[NAVIGATION] go_to_active_farm_spot finished=True")
 
     return True

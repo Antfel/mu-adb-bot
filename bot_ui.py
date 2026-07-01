@@ -1,7 +1,11 @@
 import io
+import os
+import subprocess
 import sys
 import threading
+import traceback
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
@@ -22,7 +26,7 @@ from core.character_level import read_character_level
 from core.level_validation import parse_character_level, validate_level_for_profile
 import core.session_state as session_state
 from core.session_state import configure_session, reset_session, set_current_bot_state
-from core.logger import log
+from core.logger import get_log_file_path, init_log_file, log
 from core.adb import get_device, set_device
 from core.device_manager import get_device_screenshot, list_adb_devices, restart_adb
 from core.game_actions import clean_game_ui, ensure_auto_mode
@@ -208,6 +212,10 @@ def run_startup_sequence(device_id, already_at_spot):
     """Validaciones previas y navegación opcional antes del loop principal."""
     global startup_already_at_spot
 
+    log(
+        f"[BOT] run_startup_sequence started device_id={device_id} "
+        f"already_at_spot={already_at_spot}"
+    )
     startup_already_at_spot = already_at_spot
 
     if already_at_spot:
@@ -221,37 +229,53 @@ def run_startup_sequence(device_id, already_at_spot):
 
     if is_dead():
         add_log("[MAIN] Personaje muerto")
+        log("[STARTUP] death check result=True")
         if not recover_if_dead(device_id):
             log("[MAIN] Recuperación falló")
+            log("[BOT] run_startup_sequence finished=False")
             return False
+    else:
+        log("[STARTUP] death check result=False")
 
     checks_ok, navigated_to_farm = run_pre_navigation_checks(device_id)
+    log(
+        f"[STARTUP] pre_navigation_checks success={checks_ok} "
+        f"navigated_to_farm={navigated_to_farm}"
+    )
     if not checks_ok:
         log("[MAIN] Validaciones pre-navegación fallaron")
+        log("[BOT] run_startup_sequence finished=False")
         return False
 
     need_navigation = not already_at_spot and not navigated_to_farm
+    log(f"[STARTUP] need_navigation={need_navigation}")
     if need_navigation:
         add_log("[MAIN] Navegando al farm spot")
         if not navigate_with_retry():
             set_bot_status("error")
             log("[BOT] Startup failed: could not reach farm spot")
+            log("[BOT] run_startup_sequence finished=False")
             return False
 
     if not ensure_auto_mode():
         log("[MAIN] No se pudo activar auto attack")
+        log("[BOT] run_startup_sequence finished=False")
         return False
 
     add_log("[BOT] Inicio completado")
+    log("[BOT] run_startup_sequence finished=True")
     return True
 
 
 def navigate_with_retry():
+    log("[NAVIGATION] navigate_with_retry started")
     device_id = _active_device_id()
     if not device_id:
+        log("[NAVIGATION] navigate_with_retry finished=False (no device)")
         return False
 
     if go_to_active_farm_spot(device_id):
+        log("[NAVIGATION] navigate_with_retry finished=True")
         return True
 
     set_bot_status("working")
@@ -259,9 +283,11 @@ def navigate_with_retry():
     clean_game_ui(device_id)
 
     if go_to_active_farm_spot(device_id):
+        log("[NAVIGATION] navigate_with_retry finished=True (after UI clean)")
         return True
 
     set_bot_status("error")
+    log("[NAVIGATION] navigate_with_retry finished=False")
     return False
 
 
@@ -318,27 +344,36 @@ def _apply_character_level_ui(level):
 
 
 def _resolve_character_level(selected_device):
+    log(f"[LEVEL] OCR level read requested for device={selected_device}")
     auto_level = read_character_level(selected_device)
     if auto_level is not None:
         _apply_character_level_ui(auto_level)
         refresh_runtime_status()
+        log(f"[LEVEL] OCR level result={auto_level}")
         log("[LEVEL] Using OCR level (priority over manual)")
         return auto_level
 
     manual_level = parse_character_level(level_var.get())
     if manual_level is not None:
+        log(f"[LEVEL] OCR level result=None manual_fallback={manual_level}")
         log("[LEVEL] OCR failed, using manual level fallback")
         return manual_level
 
+    log("[LEVEL] OCR level result=None manual_fallback=None")
     log("[LEVEL] OCR failed, no manual level configured")
     return None
 
 
 def _validate_and_prepare_session(profile_name, selected_device):
+    log(
+        f"[BOT] validate_level_for_profile starting profile={profile_name} "
+        f"device={selected_device}"
+    )
     reset_session()
 
     character_level = _resolve_character_level(selected_device)
     if character_level is None:
+        log("[BOT] validate_level_for_profile aborted: no character level")
         messagebox.showerror(
             "Nivel del personaje",
             "Debes configurar el nivel del personaje antes de iniciar el bot.",
@@ -352,10 +387,19 @@ def _validate_and_prepare_session(profile_name, selected_device):
     except FileNotFoundError as exc:
         messagebox.showerror("Mapa no encontrado", str(exc))
         log(f"[LEVEL] {exc}")
+        log("[BOT] validate_level_for_profile aborted: map not found")
         return False
+
+    log(
+        f"[BOT] validate_level_for_profile can_start={validation.can_start} "
+        f"elf_buff_enabled={validation.elf_buff_enabled} "
+        f"elf_buff_status={validation.elf_buff_status} "
+        f"show_elf_warning={validation.show_elf_warning}"
+    )
 
     if not validation.can_start:
         messagebox.showerror("Nivel insuficiente", validation.farm_blocked_message)
+        log("[BOT] validate_level_for_profile aborted: insufficient level")
         return False
 
     if validation.show_elf_warning:
@@ -371,6 +415,7 @@ def _validate_and_prepare_session(profile_name, selected_device):
         validation.elf_buff_status,
     )
     refresh_runtime_status()
+    log("[BOT] validate_level_for_profile success=True")
     return True
 
 
@@ -536,7 +581,9 @@ def _sync_session_bot_state(ui_state):
 
 def set_bot_status(state):
     global _current_bot_status
+    previous = _current_bot_status
     _current_bot_status = state
+    log(f"[BOT] set_bot_status {previous} -> {state}")
     _sync_session_bot_state(state)
 
     def _apply():
@@ -555,9 +602,14 @@ def set_bot_status(state):
 def bot_loop():
     global bot_running
 
+    log("[BOT] bot_loop started")
+    iteration = 0
     while bot_running:
+        iteration += 1
+        log(f"[BOT] bot_loop iteration={iteration}")
         try:
             if is_dead():
+                log("[BOT] bot_loop branch=death_recovery")
                 set_bot_status("working")
                 add_log("[MAIN] Personaje muerto")
                 device_id = _active_device_id()
@@ -582,6 +634,7 @@ def bot_loop():
                         set_bot_status("error")
 
             elif is_any_potion_empty():
+                log("[BOT] bot_loop branch=empty_potions")
                 set_bot_status("working")
                 add_log("[MAIN] Pociones agotadas")
                 device_id = _active_device_id()
@@ -592,6 +645,7 @@ def bot_loop():
                     set_bot_status("error")
 
             elif session_state.session_elf_buff_enabled and not has_elf_buff():
+                log("[BOT] bot_loop branch=elf_buff")
                 set_bot_status("working")
                 add_log("[MAIN] Elf buff no activo. Buscando buff")
                 device_id = _active_device_id()
@@ -603,12 +657,14 @@ def bot_loop():
 
             else:
                 if not is_in_configured_map():
+                    log("[BOT] bot_loop branch=wrong_map_navigate")
                     set_bot_status("working")
                     add_log("[MAIN] Mapa incorrecto. Volviendo al spot")
                     if not navigate_with_retry():
                         log("[MAIN] Navegación al spot falló")
                         set_bot_status("error")
                 else:
+                    log("[BOT] bot_loop branch=farming")
                     if run_farming_state():
                         set_bot_status("farming")
                     else:
@@ -617,10 +673,13 @@ def bot_loop():
 
         except Exception as e:
             log(f"[ERROR] {e}")
+            import traceback
+            log(traceback.format_exc())
             set_bot_status("error")
 
         wait(3)
 
+    log("[BOT] bot_loop exited")
     if not bot_running:
         root.after(0, lambda: set_bot_status("idle"))
         add_log("[BOT] Detenido")
@@ -680,8 +739,17 @@ def _begin_bot(already_at_spot):
     if bot_running:
         return
 
+    log_path = init_log_file(reset=True)
+    log(f"[BOT] Log file reset at {log_path}")
+    log(f"[BOT] _begin_bot started already_at_spot={already_at_spot}")
+
     selected_profile = profile_var.get()
     selected_device = device_var.get().strip()
+    selected_bot_mode = _get_selected_bot_mode()
+
+    log(f"[BOT] active profile={selected_profile or 'none'}")
+    log(f"[BOT] active bot mode={selected_bot_mode or 'none'}")
+    log(f"[BOT] active device={selected_device or 'none'}")
 
     if selected_profile:
         set_current_profile(selected_profile)
@@ -705,6 +773,8 @@ def _begin_bot(already_at_spot):
             "Seleccione un tipo de bot antes de iniciar.",
         )
         return
+
+    log(f"[BOT] selected bot mode label={bot_type_var.get() if bot_type_var else '-'}")
 
     try:
         profile_for_start = normalize_profile_data(
@@ -758,9 +828,29 @@ def _bot_worker(already_at_spot):
 
 def toggle_bot():
     if bot_running:
+        log("[BOT] toggle_bot action=stop")
         stop_bot()
     else:
+        log("[BOT] toggle_bot action=start")
         _show_spot_confirm_modal()
+
+
+def export_logs():
+    log_path = Path(get_log_file_path())
+    if not log_path.is_file():
+        messagebox.showinfo("Logs", "No hay archivo de logs todavía.")
+        return
+
+    log(f"[BOT] export_logs path={log_path}")
+    try:
+        if os.name == "nt":
+            os.startfile(log_path.parent)  # noqa: S606
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(log_path.parent)], check=False)
+        else:
+            subprocess.run(["xdg-open", str(log_path.parent)], check=False)
+    except OSError as exc:
+        messagebox.showerror("Logs", f"No se pudo abrir la carpeta de logs:\n{exc}")
 
 
 def stop_bot():
@@ -1170,6 +1260,12 @@ def _build_ui():
         "👥  Administrar perfiles",
         lambda: open_profile_manager(root),
     ).grid(row=0, column=0, sticky="ew", ipady=6)
+
+    create_primary_button(
+        config_actions,
+        "📄  Exportar logs",
+        export_logs,
+    ).grid(row=1, column=0, sticky="ew", ipady=6, pady=(8, 0))
 
     device_select.bind("<<ComboboxSelected>>", _on_device_selected)
     profile_select.bind("<<ComboboxSelected>>", _on_profile_selected)

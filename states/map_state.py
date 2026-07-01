@@ -71,18 +71,26 @@ def is_expected_map_loaded(device_id, expected_map_id):
 
     method = _resolve_detection_method(navigation)
     if method == "template" and has_template:
+        template_path = navigation.get("current_map_template")
+        log(f"[MAP] current_map_template={template_path}")
+
         screen = get_screen()
         if screen is None:
+            log("[MAP] Final result=False (screen unavailable)")
             return False
 
-        matched, confidence, threshold = probe_current_map_match(screen, navigation)
+        matched, confidence, resolved_threshold = probe_current_map_match(screen, navigation)
+        log(f"[MAP] threshold={resolved_threshold}")
         log(
             f"[MAP_CHECK] expected={expected_map_id} "
-            f"confidence={confidence:.3f} threshold={threshold}"
+            f"confidence={confidence:.3f} threshold={resolved_threshold}"
         )
+        log(f"[MAP] Final result={matched}")
         return matched
 
-    return is_current_map(device_id, map_def)
+    result = is_current_map(device_id, map_def)
+    log(f"[MAP] Final result={result}")
+    return result
 
 
 def detect_current_map(device_id=None, *, log_match=True):
@@ -161,8 +169,10 @@ def is_in_configured_map(device_id=None):
 
     if is_expected_map_loaded(device_id, expected_map_id):
         log(f"[MAP] Expected map confirmed: {expected_map_id}")
+        log("[MAP] Final is_in_configured_map=True")
         return True
 
     detected = detect_current_map(device_id, log_match=False)
     log(f"[MAP] Current map {detected} != configured {expected_map_id}")
+    log("[MAP] Final is_in_configured_map=False")
     return False

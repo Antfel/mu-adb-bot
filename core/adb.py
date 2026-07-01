@@ -1,4 +1,5 @@
 import subprocess
+import time
 from pathlib import Path
 
 from core.logger import log
@@ -26,25 +27,52 @@ def bind_adb_device(device_id):
     return device_id
 
 
+def _format_adb_command(command):
+    return " ".join(str(part) for part in command)
+
+
 def run_adb(args, capture_output=True):
     if not DEVICE_ID:
         raise RuntimeError("[ADB] No device selected")
 
     command = ["adb", "-s", DEVICE_ID] + args
+    cmd_label = _format_adb_command(command)
     console = hidden_console_kwargs()
+    start = time.monotonic()
 
-    result = subprocess.run(
-        command,
-        capture_output=capture_output,
-        text=False,
-        startupinfo=console["startupinfo"],
-        creationflags=console["creationflags"],
-    )
+    log(f"[ADB-CALL] cmd={cmd_label}")
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=capture_output,
+            text=False,
+            startupinfo=console["startupinfo"],
+            creationflags=console["creationflags"],
+        )
+    except subprocess.TimeoutExpired as exc:
+        duration = time.monotonic() - start
+        log(
+            f"[ADB-TIMEOUT] cmd={cmd_label} duration={duration:.2f}s"
+        )
+        raise RuntimeError(f"ADB timeout: {cmd_label}") from exc
+    except OSError as exc:
+        duration = time.monotonic() - start
+        log(f"[ADB-ERROR] cmd={cmd_label} duration={duration:.2f}s error={exc}")
+        raise RuntimeError(f"ADB error: {exc}") from exc
+
+    duration = time.monotonic() - start
+    log(f"[ADB-TIME] cmd={cmd_label} duration={duration:.2f}s")
 
     if result.returncode != 0:
-        error = result.stderr.decode("utf-8", errors="ignore")
+        error = result.stderr.decode("utf-8", errors="ignore").strip()
+        log(
+            f"[ADB-ERROR] cmd={cmd_label} returncode={result.returncode} "
+            f"stderr={error or 'none'}"
+        )
         raise RuntimeError(f"ADB error: {error}")
 
+    log(f"[ADB-OK] cmd={cmd_label}")
     return result.stdout
 
 
