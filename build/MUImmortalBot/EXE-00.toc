@@ -54,7 +54,7 @@
  [],
  False,
  False,
- 1780024962,
+ 1782869733,
  [('runw',
    '/Users/felixsoliss./mu-adb-bot/venv/lib/python3.13/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
    'EXECUTABLE')],

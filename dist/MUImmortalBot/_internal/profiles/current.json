@@ -8,5 +8,21 @@
     "map": "temple_of_kalima_1",
     "wire": 2,
     "spot": "spot_1",
-    "character_level": 383
+    "character_level": 440,
+    "display_name": "MG STR Ridax",
+    "general_config": {
+        "enable_elf_buff": true
+    },
+    "farm_config": {
+        "enabled": true
+    },
+    "kill_bosses_config": {
+        "enabled": false,
+        "maps": [
+            "divine_realm_1",
+            "temple_of_kalima_1"
+        ],
+        "include_golden_mobs": true
+    },
+    "bot_mode": "farm"
 }

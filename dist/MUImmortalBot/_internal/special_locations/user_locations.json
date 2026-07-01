@@ -5,10 +5,15 @@
             "profile": "kalima_1.json",
             "type": "farm_spot",
             "name": "Farm Spot",
-            "map": "temple_of_kalima_1",
-            "wire": 2,
-            "x": 1522,
-            "y": 409
+            "map": "plain_of_four_winds_2",
+            "wire": 3,
+            "x": 1661,
+            "y": 959,
+            "coord_x": 180,
+            "coord_y": 115,
+            "arrival_radius": 5,
+            "farm_radius": 20,
+            "lost_radius": 35
         },
         {
             "id": "kalima_1_elf_buff",
@@ -17,8 +22,13 @@
             "name": "Elf Buff",
             "map": "divine_realm_1",
             "wire": 1,
-            "x": 1417,
-            "y": 591
+            "x": 1169,
+            "y": 796,
+            "coord_x": 59,
+            "coord_y": 24,
+            "arrival_radius": 5,
+            "farm_radius": 20,
+            "lost_radius": 35
         }
     ]
 }

@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 import threading
 import tkinter as tk
@@ -24,6 +25,7 @@ import core.session_state as session_state
 from core.session_state import configure_session, reset_session, set_current_bot_state
 from core.logger import log
 from core.adb import get_device, set_device
+from core.screen import begin_bot_screen_cycle
 from core.device_manager import get_device_screenshot, list_adb_devices, restart_adb
 from core.game_actions import clean_game_ui, ensure_auto_mode
 from core.window_utils import center_window
@@ -88,6 +90,8 @@ bot_running = False
 startup_already_at_spot = False
 _preview_photo = None
 preview_refresh_job = None
+_preview_in_progress = False
+PREVIEW_REFRESH_INTERVAL_MS = 2000 if os.name == "nt" else 1500
 _current_bot_status = "idle"
 
 # Widget refs set during layout build
@@ -556,6 +560,7 @@ def bot_loop():
     global bot_running
 
     while bot_running:
+        begin_bot_screen_cycle()
         try:
             if is_dead():
                 set_bot_status("working")
@@ -812,15 +817,25 @@ def _apply_preview(png_bytes):
 
 
 def update_device_preview():
+    global _preview_in_progress
+
     device_id = device_var.get().strip()
     if not device_id:
         _show_no_preview()
         return
 
-    def worker():
-        png_bytes = get_device_screenshot(device_id)
-        root.after(0, lambda: _apply_preview(png_bytes))
+    if _preview_in_progress:
+        return
 
+    def worker():
+        global _preview_in_progress
+        try:
+            png_bytes = get_device_screenshot(device_id)
+            root.after(0, lambda: _apply_preview(png_bytes))
+        finally:
+            _preview_in_progress = False
+
+    _preview_in_progress = True
     threading.Thread(target=worker, daemon=True).start()
 
 
@@ -839,7 +854,10 @@ def schedule_preview_refresh():
         return
 
     update_device_preview()
-    preview_refresh_job = root.after(2000, schedule_preview_refresh)
+    preview_refresh_job = root.after(
+        PREVIEW_REFRESH_INTERVAL_MS,
+        schedule_preview_refresh,
+    )
 
 
 def restart_adb_devices():
