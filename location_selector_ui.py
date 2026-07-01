@@ -51,6 +51,71 @@ LOCATION_WINDOW_INITIAL_HEIGHT = 700
 LOCATION_WINDOW_MIN_WIDTH = 900
 LOCATION_WINDOW_MIN_HEIGHT = 650
 
+
+def _bind_vertical_scroll(window, scroll_canvas):
+    def _on_mousewheel(event):
+        if getattr(event, "num", None) == 5:
+            scroll_canvas.yview_scroll(1, "units")
+            return "break"
+        if getattr(event, "num", None) == 4:
+            scroll_canvas.yview_scroll(-1, "units")
+            return "break"
+        delta = getattr(event, "delta", 0)
+        if delta:
+            step = int(-delta / 120) or (-1 if delta > 0 else 1)
+            scroll_canvas.yview_scroll(step, "units")
+            return "break"
+        return None
+
+    for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        window.bind(sequence, _on_mousewheel)
+
+
+def _unbind_vertical_scroll(window):
+    for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        try:
+            window.unbind(sequence)
+        except tk.TclError:
+            pass
+
+
+def _create_vertical_scroll_area(parent):
+    scroll_container = tk.Frame(parent, bg=UI_BG)
+    scroll_container.pack(fill=tk.BOTH, expand=True)
+
+    scroll_canvas = tk.Canvas(
+        scroll_container,
+        bg=UI_BG,
+        highlightthickness=0,
+        borderwidth=0,
+    )
+    scroll_bar = tk.Scrollbar(
+        scroll_container,
+        orient=tk.VERTICAL,
+        command=scroll_canvas.yview,
+    )
+    scrollable = tk.Frame(scroll_canvas, bg=UI_BG)
+    scrollable_window = scroll_canvas.create_window(
+        (0, 0),
+        window=scrollable,
+        anchor="nw",
+    )
+
+    def _sync_scrollable_width(event):
+        scroll_canvas.itemconfigure(scrollable_window, width=event.width)
+
+    def _update_scroll_region(_event=None):
+        scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
+
+    scroll_canvas.bind("<Configure>", _sync_scrollable_width)
+    scrollable.bind("<Configure>", _update_scroll_region)
+    scroll_canvas.configure(yscrollcommand=scroll_bar.set)
+
+    scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scroll_bar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    return scroll_canvas, scrollable
+
 LOCATION_TITLES = {
     "farm_spot": "Configurar Farm Spot Visual",
     "elf_buff": "Configurar Elf Buff",
@@ -152,6 +217,7 @@ def open_location_selector(location_type, profile_name, on_close=None):
             on_close()
 
     def close_location_window():
+        _unbind_vertical_scroll(window)
         try:
             window.destroy()
         except tk.TclError:
@@ -163,7 +229,9 @@ def open_location_selector(location_type, profile_name, on_close=None):
     main = tk.Frame(window, bg=UI_BG)
     main.pack(fill=tk.BOTH, expand=True, padx=PAD_WINDOW, pady=PAD_WINDOW)
 
-    form_body = create_packed_section(main, title, icon, accent=accent, fill="both")
+    scroll_canvas, scrollable = _create_vertical_scroll_area(main)
+
+    form_body = create_packed_section(scrollable, title, icon, accent=accent, fill="both")
     form_body.grid_columnconfigure(0, weight=1)
 
     map_var = tk.StringVar()
@@ -217,7 +285,7 @@ def open_location_selector(location_type, profile_name, on_close=None):
     coords_label = ui_label(form_body, "X: - | Y: -", font=("Segoe UI", 10, "bold"))
     coords_label.grid(row=row, column=0, sticky="w", pady=(0, PAD_ROW))
 
-    canvas_section = create_packed_section(main, "Mapa", "🗺", accent=accent, fill="both")
+    canvas_section = create_packed_section(scrollable, "Mapa", "🗺", accent=accent, fill="both")
     canvas_frame = tk.Frame(
         canvas_section,
         width=CANVAS_WIDTH,
@@ -469,7 +537,7 @@ def open_location_selector(location_type, profile_name, on_close=None):
     canvas.bind("<Button-1>", on_canvas_click)
     map_select.bind("<<ComboboxSelected>>", on_map_selected)
 
-    actions = tk.Frame(main, bg=UI_BG)
+    actions = tk.Frame(scrollable, bg=UI_BG)
     actions.pack(fill=tk.X, pady=(PAD_ROW, 0))
     actions.grid_columnconfigure(0, weight=1)
     actions.grid_columnconfigure(1, weight=1)
@@ -502,6 +570,8 @@ def open_location_selector(location_type, profile_name, on_close=None):
             if existing_location.get("name"):
                 name_var.set(existing_location["name"])
         on_map_selected()
+
+    _bind_vertical_scroll(window, scroll_canvas)
 
     fit_and_center_window(
         window,
